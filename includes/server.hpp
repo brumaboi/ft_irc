@@ -14,9 +14,11 @@
 #include <csignal>
 #include <signal.h>
 #include <fcntl.h>
+#include <map>
 
 class Client; // forward declaration
 class Channel;
+class CommandParser;
 
 class Server
 {
@@ -54,7 +56,10 @@ private:
 
     // Network state
     std::vector<pollfd> _fds;       // Poll descriptors for server + clients
-    //std::vector<Client> _clients;   // List of connected clients
+    std::map<int, Client*> _clients; // Map of fd -> Client objects
+    
+    // Command processing
+    CommandParser *_commandParser;   // Command parser instance
 
     // Socket setup and cleanup
     void setupSocket();          // Prepare server socket
@@ -68,6 +73,10 @@ private:
     static void signalHandler(int signum);    // Handle SIGINT (Ctrl+C)
     void setupSignalHandler();
 
+    // Client management methods - add these
+    Client* getClientByFd(int fd) const;             // Get client by file descriptor
+    Client* getClientByNick(const std::string &nick) const; // Get client by nickname
+    
     // Utility methods
     bool isNickInUse(const std::string &nick) const; // Check if nickname is already taken
 };

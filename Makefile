@@ -5,10 +5,12 @@ RM = rm -f
 
 SRCS = main.cpp \
        srcs/server.cpp \
-	   srcs/logger.cpp \
+       srcs/logger.cpp \
+       srcs/client.cpp \
+       srcs/channel.cpp \
 
 OBJS = $(SRCS:.cpp=.o)
-DEPS = includes/server.hpp includes/Logger.hpp
+DEPS = includes/server.hpp includes/logger.hpp includes/client.hpp includes/channel.hpp
 
 all: $(NAME)
 
