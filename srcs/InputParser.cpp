@@ -1,15 +1,18 @@
 #include "InputParser.hpp"
 
-InputParser::InputParser(Server& server) : server(server) {
+InputParser::InputParser(Server& server) : server(server)
+{
     registerHandlers();
 }
 
-static void UpperCommand(std::string& s) {
+static void UpperCommand(std::string& s)
+{
     for (size_t i = 0; i < s.size(); ++i)
         s[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(s[i])));
 }
 
-ParsedInput InputParser::parseLine(const std::string& line) {
+ParsedInput InputParser::parseLine(const std::string& line)
+{
 
     ParsedInput parsed;
     std::string tmp = line;
@@ -67,22 +70,6 @@ void InputParser::handleCommand(Client& client, const ParsedInput& parsedInput)
     }
 }
 
-void InputParser::registerHandlers()
-{
-    // commandHandlers["JOIN"] = &InputParser::handleJoin;
-    // commandHandlers["PART"] = &InputParser::handlePart;
-    // commandHandlers["PRIVMSG"] = &InputParser::handlePrivMsg;
-    // commandHandlers["NICK"] = &InputParser::handleNick;
-    // commandHandlers["USER"] = &InputParser::handleUser;
-    // commandHandlers["PING"] = &InputParser::handlePing;
-    // commandHandlers["PONG"] = &InputParser::handlePong;
-    // commandHandlers["QUIT"] = &InputParser::handleQuit;
-    // commandHandlers["MODE"] = &InputParser::handleMode;
-    // commandHandlers["TOPIC"] = &InputParser::handleTopic;
-    // commandHandlers["INVITE"] = &InputParser::handleInvite;
-    // commandHandlers["KICK"] = &InputParser::handleKick;
-}
-
 void InputParser::processInput(int fd, const std::string& bytes)
 {
     clientBuffers[fd] += bytes;
@@ -100,3 +87,74 @@ void InputParser::processInput(int fd, const std::string& bytes)
     }
 }
 
+void InputParser::registerHandlers()
+{
+    commandHandlers["JOIN"] = &InputParser::handleJoin;
+    commandHandlers["PART"] = &InputParser::handlePart;
+    // commandHandlers["PRIVMSG"] = &InputParser::handlePrivMsg;
+    // commandHandlers["NICK"] = &InputParser::handleNick;
+    // commandHandlers["USER"] = &InputParser::handleUser;
+    // commandHandlers["PASS"] = &InputParser::handlePass;
+    // commandHandlers["PING"] = &InputParser::handlePing;
+    // commandHandlers["PONG"] = &InputParser::handlePong;
+    // commandHandlers["QUIT"] = &InputParser::handleQuit;
+    // commandHandlers["TOPIC"] = &InputParser::handleTopic;
+    // commandHandlers["MODE"] = &InputParser::handleMode;
+    // commandHandlers["INVITE"] = &InputParser::handleInvite;
+    // commandHandlers["KICK"] = &InputParser::handleKick;
+}
+
+void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
+{
+    if (parsedInput.args.empty())
+        return; //send error for missing channel name
+    std::string channelName = parsedInput.args[0];
+
+    Channel* channel = server.//function that gets or creates a channel by name(channelName);
+    if (!channel)
+        return; //send error for channel creation failure
+    
+    if(!channel->hasClient(&client))
+        channel->addClient(&client);
+    
+    //send confirmation to client
+    const std::string joinMsg = ":" + client.getNick() + " JOIN " + channelName + "\r\n";
+    server.sendResponse(client.getFd(), joinMsg);
+    std::vector<Client*> clients = channel->getClients();
+    for (size_t i = 0; i < clients.size(); ++i)
+    {
+        if (clients[i] != &client)
+            server.sendResponse(clients[i]->getFd(), joinMsg);
+    }
+
+    // Optionally send topic and user list
+    if (!channel->getTopic().empty())
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " TOPIC " + channelName + " :" + channel->getTopic() + "\r\n");
+    }
+    else
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " NOTICE " + client.getNick() + " :No topic is set\r\n");
+    }
+}
+
+void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
+{
+    if (parsedInput.args.empty())
+        return; //send error for missing channel name
+    std::string channelName = parsedInput.args[0];
+
+    Channel* channel = server.//function that gets a channel by name(channelName);
+    if (!channel || !channel->hasClient(&client))
+        return; //send errors
+    
+    std::string partMsg = ":" + client.getNick() + " PART " + channelName + "\r\n";
+    server.sendResponse(client.getFd(), partMsg);
+    std::vector<Client*> clients = channel->getClients();
+    for (size_t i = 0; i < clients.size(); ++i)
+    {
+        if (clients[i] != &client)
+            server.sendResponse(clients[i]->getFd(), partMsg);
+    }
+    channel->removeClient(&client);
+}
