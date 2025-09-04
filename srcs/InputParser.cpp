@@ -126,8 +126,6 @@ void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
         if (clients[i] != &client)
             server.sendResponse(clients[i]->getFd(), joinMsg);
     }
-
-    // Optionally send topic and user list
     if (!channel->getTopic().empty())
     {
         server.sendResponse(client.getFd(), ":" + server.getServerName() + " TOPIC " + channelName + " :" + channel->getTopic() + "\r\n");
@@ -136,6 +134,11 @@ void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
     {
         server.sendResponse(client.getFd(), ":" + server.getServerName() + " NOTICE " + client.getNick() + " :No topic is set\r\n");
     }
+    //
+    // Need to implement restrictions key(+k), invite only(+i), user limit(+l)
+    // First user to join becomes operator(+o)
+    // Send appropriate messages for these conditions
+    // 
 }
 
 void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
@@ -157,4 +160,76 @@ void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
             server.sendResponse(clients[i]->getFd(), partMsg);
     }
     channel->removeClient(&client);
+    //
+    // If channel is empty after part, we can delete it from server's channel list
+    // If the parting client was an operator, assign a new operator if needed
+    // Need to add the right error messages and confirmations
+    //
+}
+
+void InputParser::handlePass(Client& client, const ParsedInput& parsedInput)
+{
+    if (parsedInput.args.empty())
+        return; //send error for missing password
+    std::string password = parsedInput.args[0];
+
+    if (password != server.getPassword())
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNick() + " :Password incorrect\r\n");
+        return ;
+    }
+    //
+    // Need updated Client class to complete Pass handling
+    // We need to check if the client is already registered
+    // If not, mark as registered and send welcome messages
+    // If already registered, possibly ignore or send a notice
+    // 
+    // Password mismatch handling or other logic as needed
+    //
+}
+
+void InputParser::handlePing(Client& client, const ParsedInput& parsedInput)
+{
+    const std::string token = parsedInput.args.empty() ? "" : parsedInput.args[0];
+    server.sendResponse(client.getFd(), ":" + server.getServerName() + " PONG " + server.getServerName() + " :" + token + "\r\n");
+    //
+    // May need to add some checking and logging here
+    //
+}
+
+void InputParser::handlePong(Client& client, const ParsedInput& parsedInput)
+{
+    (void)parsedInput;
+    client.//function to update last pong time or status();
+    //
+    // !!!!!
+    //  
+}
+
+void InputParser::handleQuit(Client& client, const ParsedInput& parsedInput)
+{
+    std::string quitMsg = parsedInput.args.empty() ? "Client Quit" : parsedInput.args[0];
+    if (!quitMsg.empty() && quitMsg[0] == ':')
+        quitMsg = quitMsg.substr(1);
+    std::string fullQuitMsg = ":" + client.getNick() + " QUIT :" + quitMsg + "\r\n";
+
+    // Notify all channels the client is part of
+    std::vector<Channel*> channels = server.getChannelsForClient(&client);
+    for (size_t i = 0; i < channels.size(); ++i)
+    {
+        std::vector<Client*> clients = channels[i]->getClients();
+        for (size_t j = 0; j < clients.size(); ++j)
+        {
+            if (clients[j] != &client)
+                server.sendResponse(clients[j]->getFd(), fullQuitMsg);
+        }
+        channels[i]->removeClient(&client);
+        //
+        // If channel is empty after removal, delete it from server's channel list
+        //
+    }
+    //
+    // Need to implement server function to remove client by reference or fd
+    // May also need to tweak the Quit message format and handling
+    //                          
 }
