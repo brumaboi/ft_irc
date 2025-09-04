@@ -15,10 +15,12 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <map>
+#include <InputParser.hpp>
 
 class Client; // forward declaration
 class Channel;
 class CommandParser;
+class InputParser;
 
 class Server
 {
@@ -79,4 +81,6 @@ private:
     
     // Utility methods
     bool isNickInUse(const std::string &nick) const; // Check if nickname is already taken
+
+    InputParser _parser;
 };

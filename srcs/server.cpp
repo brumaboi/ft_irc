@@ -4,7 +4,7 @@ bool Server::_signalReceived = false;
 
 // ----------------- Constructor / Destructor -----------------
 Server::Server(const int port, const std::string &password)
-    : _port(port), _password(password), _serverFd(-1), _shutdownRequested(false)
+    : _port(port), _password(password), _serverFd(-1), _shutdownRequested(false), _parser(*this)
 {
     _serverName = "MyServer";
     setupSignalHandler();;
@@ -196,8 +196,7 @@ void	Server::receiveData(int fd)
 		close(fd);
 		return;
 	}
-	std::string	cmd(buffer, bytesRead);
-	parseCommand(fd, cmd);
+    _parser.processInput(fd, std::string(buffer, bytesRead));
 }
 
 void	Server::removeClient(int fd)
