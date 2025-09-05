@@ -1,4 +1,7 @@
 #include "../includes/server.hpp"
+#include "../includes/client.hpp"
+#include "../includes/channel.hpp"
+
 
 bool Server::_signalReceived = false;
 
@@ -90,41 +93,6 @@ void Server::setupSocket()
     std::cout << "Server listening on port " << _port << std::endl;
 }
 
-// void	Server::setupSocket(void)
-// {
-//     //Create TCP/IPv4 socket
-// 	_serverFd = socket(AF_INET, SOCK_STREAM, 0);
-// 	if (_serverFd < 0)
-// 		throw std::runtime_error("socket() failed");
-
-//     //Allow address reuse
-// 	int	opt = 1;
-// 	if (setsockopt(_serverFd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-// 		throw std::runtime_error("setsockopt() failed");
-
-//     //Bind to port
-// 	std::memset(&_address, 0, sizeof(_address));
-// 	_address.sin_family = AF_INET;
-// 	_address.sin_port = htons(_port);
-// 	_address.sin_addr.s_addr = INADDR_ANY;
-
-// 	if (bind(_serverFd, (struct sockaddr *)&_address,
-// 			sizeof(_address)) < 0)
-// 		throw std::runtime_error("bind() failed");
-
-// 	if (listen(_serverFd, SOMAXCONN) < 0)
-// 		throw std::runtime_error("listen() failed");
-
-//     // Add server socket to poll list
-// 	pollfd	pfd;
-// 	pfd.fd = _serverFd;
-// 	pfd.events = POLLIN;
-// 	pfd.revents = 0;
-// 	_fds.push_back(pfd);
-
-// 	std::cout << "Server listening on port " << _port << std::endl;
-// }
-
 void Server::closeAll()
 {
     for (size_t i = 0; i < _fds.size(); ++i)
@@ -159,7 +127,6 @@ void Server::run()
 // ----------------- Client handling placeholders -----------------
 void Server::acceptNewClient()
 {
-    // Currently only accepts, does not store clients
     sockaddr_in cliAddr;
     socklen_t len = sizeof(cliAddr);
     int clientFd = accept(_serverFd, (sockaddr *)&cliAddr, &len);
@@ -171,6 +138,7 @@ void Server::acceptNewClient()
     if (fcntl(clientFd, F_SETFL, O_NONBLOCK) < 0)
     {
         std::cerr << "fcntl() failed" << std::endl;
+        close(clientFd);
         return;
     }
     pollfd pfd;
@@ -179,29 +147,136 @@ void Server::acceptNewClient()
     pfd.revents = 0;
     _fds.push_back(pfd);
 
-    std::cout << "New client connected, fd=" << clientFd << std::endl;
+    std::string hostname = inet_ntoa(cliAddr.sin_addr);
+    Client* newClient = new Client(clientFd, hostname);
+    _clients[clientFd] = newClient;
+
+    std::cout << "New client connected, fd=" << clientFd << " host=" << hostname << std::endl;
 
 }
 
-void	Server::receiveData(int fd)
+void Server::receiveData(int fd)
 {
-	char	buffer[1024];
-	ssize_t	bytesRead;
+    char buffer[1024];
+    ssize_t bytesRead;
 
-	std::memset(buffer, 0, sizeof(buffer));
-	bytesRead = recv(fd, buffer, sizeof(buffer) - 1, 0);
-	if (bytesRead <= 0)
-	{
-		std::cout << "Client disconnected, fd=" << fd << std::endl;
-		close(fd);
-		return;
-	}
-    _parser.processInput(fd, std::string(buffer, bytesRead));
+    // Clear the buffer before receiving data
+    std::memset(buffer, 0, sizeof(buffer));
+
+    // Receive data from the client socket
+    bytesRead = recv(fd, buffer, sizeof(buffer) - 1, 0);
+
+    // If the client disconnected or an error occurred
+    if (bytesRead <= 0)
+    {
+        std::cout << "Client disconnected, fd=" << fd << std::endl;
+
+        // Close the client socket
+        close(fd);
+
+        // Remove the client from the poll vector
+        _fds.erase(std::remove_if(_fds.begin(), _fds.end(),
+            [fd](const pollfd &p) { return p.fd == fd; }),
+            _fds.end());
+
+        // Remove the client from the clients map
+        // If using pointers, delete _clients[fd] before erasing
+        _clients.erase(fd);
+
+        return;
+    }
+    // Convert the received bytes to a string
+    std::string msg(buffer, bytesRead);
+    // Parser commented out for testing – currently does not return messages to the client
+    //_parser.processInput(fd, msg);
+    sendResponse(fd, "Server received: " + msg + "\n");
 }
 
 void	Server::removeClient(int fd)
 {
 	close(fd);
+    auto it = _clients.find(fd);
+
+    if (it != _clients.end())
+    {
+        delete it->second;
+        _clients.erase(it);
+    }
+
+}
+
+void Server::removeChannel(const std::string &name)
+{
+    auto it = _channels.find(name);
+    if (it != _channels.end())
+    {
+        delete it->second;
+        _channels.erase(it);
+    }
+}
+
+// ----------------- Channel handling -----------------
+Channel* Server::getOrCreateChannel(const std::string& name)
+{
+    Channel* chan;
+    auto it = _channels.find(name);
+    if (it != _channels.end())
+        return it->second;
+
+    chan = new Channel(name);
+    _channels[name] = chan;
+    return chan;
+}
+
+// Currently broadcasts messages to a channel, but since JOIN and channel management
+// are not implemented yet, this will not send messages to other clients.
+void Server::broadcastToChannel(const std::string &channelName, const std::string &message)
+{
+    // Get the channel by name; create it if it doesn't exist
+    Channel* chan = getOrCreateChannel(channelName);
+    if (!chan) return; // If channel couldn't be retrieved, exit
+
+    // Loop through all clients in the channel
+    for (Client* client : chan->getClients())
+    {
+        // Send the message to each client
+        sendResponse(client->getFd(), message);
+    }
+}
+
+void Server::addClientToChannel(const std::string &channelName, Client* client)
+{
+    if (!client)
+        return;
+    Channel* chan = getOrCreateChannel(channelName);
+    if (chan)
+    {
+        // TODO: Broadcast a JOIN message to other clients in this channel
+    //       Currently, other clients are not notified that a new client joined.
+    //       In a real IRC server, you'd send something like:
+    //       ":nickname!username@host JOIN #channel"
+    }
+}
+
+void Server::removeClientFromChannel(Client* client)
+{
+    if (!client)
+        return; // Avoid removing a null client
+
+    for (auto it = _channels.begin(); it != _channels.end(); /* no increment here */) {
+        Channel* chan = it->second;
+        chan->removeClient(client); // Remove the client from this channel
+
+        if (chan->getClients().empty()) {
+            // Remove the channel if it has no clients
+            delete chan; // Free memory
+            it = _channels.erase(it); // erase returns the next iterator
+        } else {
+            // TODO: Broadcast a QUIT/PART message to other clients
+            // Example: ":nickname!username@host PART #channel"
+            ++it;
+        }
+    }
 }
 
 void Server::sendResponse(int fd, const std::string &message)

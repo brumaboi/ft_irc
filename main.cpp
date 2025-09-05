@@ -1,57 +1,50 @@
 #include "includes/server.hpp"
 #include "includes/logger.hpp"
+#include "includes/channel.hpp"
+#include "includes/client.hpp"
 
-int	main(int argc, char **argv)
+int main(int argc, char **argv)
 {
-	if (argc != 3)
-	{
-		Logger::error("Usage: " + std::string(argv[0]) + " <port> <password>", true);
-		return 1;
-	}
+    // Check if the correct number of arguments is provided
+    if (argc != 3)
+    {
+        Logger::error("Usage: " + std::string(argv[0]) + " <port> <password>", true);
+        return 1;
+    }
 
-	int port = std::atoi(argv[1]);
-	std::string password = argv[2];
+    // Parse the port number and password
+    int port = std::atoi(argv[1]);
+    std::string password = argv[2];
 
-	try
-	{
-		Logger::info("Starting server on port " + std::to_string(port));
-		Server server(port, password);
-		server.run();
-	}
-	catch (const std::exception &e)
-	{
-		Logger::error("Server error: " + std::string(e.what()), true);
-		return 1;
-	}
-	return 0;
+    // Validate port number (must be between 1 and 65535)
+    if (port <= 0 || port > 65535)
+    {
+        Logger::error("Invalid port number: " + std::to_string(port), true);
+        return 1;
+    }
+
+    // Ignore SIGPIPE signals to prevent server crash when sending to a closed socket
+    std::signal(SIGPIPE, SIG_IGN);
+
+    try
+    {
+        // Log server start
+        Logger::info("Starting server on port " + std::to_string(port));
+
+        // Create server object
+        Server server(port, password);
+
+        // Run the server main loop (blocking call)
+        server.run();
+    }
+    catch (const std::exception &e)
+    {
+        // Log any runtime errors
+        Logger::error("Server error: " + std::string(e.what()), true);
+        return 1;
+    }
+
+    // Log server exit (graceful shutdown)
+    Logger::info("Server exited gracefully");
+    return 0;
 }
-
-// int	main(int argc, char **argv)
-// {
-// 	if (argc != 3)
-// 	{
-// 		std::cerr << "Usage: " << argv[0] << " <port> <password>" << std::endl;
-// 		return (1);
-// 	}
-// 	int		port = std::atoi(argv[1]);
-// 	std::string	password = argv[2];
-
-// 	try
-// 	{
-// 		Server	server(port, password);
-// 		server.run();
-// 	}
-// 	catch (const std::exception &e)
-// 	{
-// 		std::cerr << "Server error: " << e.what() << std::endl;
-// 		return (1);
-// 	}
-// 	return (0);
-
-
-//ft_irc % ./ircserv 6667 mypassword      ft_irc % nc 127.0.0.1 6667
-//Server listening on port 6667           hello
-//New client connected, fd=4              Server got your message: hello
-//Received from fd 4: hello
-
-//ctrl + c
