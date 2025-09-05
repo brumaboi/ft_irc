@@ -1,4 +1,6 @@
 #include "InputParser.hpp"
+#include <regex>
+#include <unordered_set>
 
 InputParser::InputParser(Server& server) : server(server)
 {
@@ -232,4 +234,152 @@ void InputParser::handleQuit(Client& client, const ParsedInput& parsedInput)
     // Need to implement server function to remove client by reference or fd
     // May also need to tweak the Quit message format and handling
     //                          
+}
+
+void InputParser::handleUser(Client& client, const ParsedInput& parsedInput)
+{
+    const int fd = client.getFd();
+
+    //check if it's already registered
+    if (client.isRegistered())
+    {
+        server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNick() + " :You are already registered\r\n");
+        return;
+    }
+    //need 4 params: <user> <mode> <unused> :<realname>
+    if (parsedInput.args.size() < 4)
+    {
+        server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNick() + " :Not enough parameters\r\n");
+        return;
+    }
+    std::string username = parsedInput.args[0];
+    std::string realname = parsedInput.args[3];
+    if (!realname.empty() && realname[0] == ':')
+        realname = realname.erase(0, 1);
+    //
+    // need functions in Client class to set username and realname    
+    // client.setUsername(username);
+    // client.setRealname(realname);
+    //
+
+    // complete registration of user if PASS (if required) and NICK are set
+    const bool passRequired = !server.getPassword().empty();
+    const bool passProvided = !passRequired || client.// function to check if PASS was provided();
+    if (passProvided && !client.getNickname().empty())
+    {
+        client.setRegistered(true);
+        // send welcome messages
+        server.sendResponse(fd, ":" + server.getServerName() + " 001 " + client.getNick() + " :Welcome to the IRC Network\r\n");
+        server.sendResponse(fd, ":" + server.getServerName() + " 002 " + client.getNick() + " :Your host is " + server.getServerName() + "\r\n");
+        server.sendResponse(fd, ":" + server.getServerName() + " 003 " + client.getNick() + " :This server was created <date>\r\n");
+        server.sendResponse(fd, ":" + server.getServerName() + " 004 " + client.getNick() + " " + server.getServerName() + " <version> <available user modes> <available channel modes>\r\n");
+    }
+    else if (!passProvided)
+    {
+        server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNick() + " :Password required\r\n");
+    }
+    else if (client.getNickname().empty())
+    {
+        server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNick() + " :Nickname required\r\n");
+    }
+}
+
+void InputParser::handlePrivMsg(Client& client, const ParsedInput& parsedInput)
+{
+    const int fd = client.getFd();
+
+    if (parsedInput.args.size() < 2)
+    {
+        server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNick() + " :Not enough parameters\r\n");
+        return ;
+    }
+    std::string target = parsedInput.args[0];
+    std::string message;
+    for (size_t i = 1; i < parsedInput.args.size(); ++i)
+    {
+        if (!message.empty())
+            message += " ";
+        message += parsedInput.args[i];
+    }
+    if (!message.empty() && message[0] == ':')
+        message = message.erase(0, 1);
+    if (message.empty())
+    {
+        server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNick() + " :No text to send\r\n");
+        return ;
+    }
+
+    if (!target.empty() && target[0] == '#')
+    {
+        Channel* channel = server.//function to get channel by name(target);
+        if (!channel)
+        {
+            server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNick() + " :No such channel\r\n");
+            return ;
+        }
+        if (!channel->hasClient(&client))
+        {
+            server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNick() + " :Cannot send to channel\r\n");
+            return ;
+        }
+        const std::vector<Client*> clients = channel->getClients();
+        for (size_t i = 0; i < clients.size(); ++i)
+        {
+           Client* targetClient = clients[i];
+           if (targetClient && targetClient->getFd() != fd)
+           {
+               server.sendResponse(targetClient->getFd(), ":" + client.getNick() + " PRIVMSG " + target + " :" + message + "\r\n");
+           }
+        }
+    }
+    else
+    {
+        Client* directClient = server.//function to get client by nickname(target);
+        if (!directClient)
+        {
+            server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNick() + " :No such nick/channel\r\n");
+            return ;
+        }
+        server.sendResponse(directClient->getFd(), ":" + client.getNick() + " PRIVMSG " + target + " :" + message + "\r\n");
+    }
+}
+
+void InputParser::handleNick(Client& client, const ParsedInput& parsedInput)
+{
+    const int fd = client.getFd();
+    const std::string& hostShown = server.getServerName();
+
+    if (parsedInput.args.empty())
+    {
+        server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNick() + " :No nickname given\r\n");
+        return ;
+    }
+
+    std::string newNick = parsedInput.args[0];
+
+    static const std::regex nickRe("^[A-Za-z][A-Za-z0-9\\-_]{0,15}$");
+    if (!std::regex_match(newNick, nickRe))
+    {
+        server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNick() + " :Erroneous nickname\r\n");
+        return ;
+    }
+
+    if (Client* existingClient = server.something);//function to get client by nickname(newNick))
+        if (existingClient && existingClient->getFd() != fd)
+    {
+        server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNick() + " :Nickname is already in use\r\n");
+        return ;
+    }
+
+    std::string oldNick = client.getNick();
+    const bool wasRegistered = client.isRegistered();
+    const std::string user = client.getUsername().empty() ? "*" : client.getUsername();
+    
+    std::string nickChangeMsg;
+    if (wasRegistered && !oldNick.empty())
+        nickChangeMsg = ":" + oldNick + "!" + user + "@" + hostShown + " NICK :" + newNick + "\r\n";
+    else
+        nickChangeMsg = ":" + hostShown + " NICK :" + newNick + "\r\n";
+    
+    client.setNick(newNick);
 }
