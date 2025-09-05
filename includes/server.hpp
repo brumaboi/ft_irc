@@ -40,6 +40,16 @@ public:
     void receiveData(int fd);      // Receive data from a specific client
     void removeClient(int fd);     // Remove a client from server
 
+    // Channel handling
+    Channel* getOrCreateChannel(const std::string& name);
+    void broadcastToChannel(const std::string &channelName, const std::string &message);
+    void removeChannel(const std::string &name);
+
+    void addClientToChannel(const std::string &channelName, Client* client);
+    void removeClientFromChannel(Client* client);
+
+    Client* getClientByFd(int fd) const; 
+
     // Send messages to clients
     void sendResponse(int fd, const std::string &message);
 
@@ -59,9 +69,13 @@ private:
     // Network state
     std::vector<pollfd> _fds;       // Poll descriptors for server + clients
     std::map<int, Client*> _clients; // Map of fd -> Client objects
+    std::map<int, std::string> clientBuffers; // Map of fd -> incomplete received data
     
     // Command processing
     CommandParser *_commandParser;   // Command parser instance
+
+    // Channel management
+    std::map<std::string, Channel*> _channels;
 
     // Socket setup and cleanup
     void setupSocket();          // Prepare server socket
@@ -76,7 +90,6 @@ private:
     void setupSignalHandler();
 
     // Client management methods - add these
-    Client* getClientByFd(int fd) const;             // Get client by file descriptor
     Client* getClientByNick(const std::string &nick) const; // Get client by nickname
     
     // Utility methods
