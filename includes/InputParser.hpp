@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <regex>
+#include <unordered_set>
 
 class Server;
 class Client;
@@ -28,12 +30,12 @@ class InputParser {
     private:
         Server& server;
         std::unordered_map<int, std::string> clientBuffers;
- 
         typedef void (InputParser::*CommandHandler)(Client&, const ParsedInput&);
         std::unordered_map<std::string, CommandHandler> commandHandlers;
+        
         // Command Handlers
         void registerHandlers();
-        // void handleUnknownCommand(Client& client, const ParsedInput& parsedInput);
+        void handleUnknownCommand(Client& client, const ParsedInput& parsedInput);
         void handleJoin(Client& client, const ParsedInput& parsedInput);
         void handlePart(Client& client, const ParsedInput& parsedInput);
         void handlePrivMsg(Client& client, const ParsedInput& parsedInput);
