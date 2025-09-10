@@ -2,6 +2,16 @@
 #include "../includes/client.hpp"
 #include "../includes/channel.hpp"
 
+// Add to Client.hpp/cpp in order to work
+    // public:
+    // const std::string& getUsername() const { return _username; }
+    // std::string getHostname() const { return _hostname; }
+
+    // private:
+    //std::string _username;
+
+    // + _username = ""; -> void Client::_initializeClient()
+
 
 bool Server::_signalReceived = false;
 
@@ -160,36 +170,45 @@ void Server::receiveData(int fd)
     char buffer[1024];
     ssize_t bytesRead;
 
-    // Clear the buffer before receiving data
     std::memset(buffer, 0, sizeof(buffer));
 
-    // Receive data from the client socket
     bytesRead = recv(fd, buffer, sizeof(buffer) - 1, 0);
 
-    // If the client disconnected or an error occurred
     if (bytesRead <= 0)
     {
         std::cout << "Client disconnected, fd=" << fd << std::endl;
 
-        // Close the client socket
         close(fd);
-
-        // Remove the client from the poll vector
         _fds.erase(std::remove_if(_fds.begin(), _fds.end(),
             [fd](const pollfd &p) { return p.fd == fd; }),
             _fds.end());
-
-        // Remove the client from the clients map
-        // If using pointers, delete _clients[fd] before erasing
         _clients.erase(fd);
-
         return;
     }
-    // Convert the received bytes to a string
     std::string msg(buffer, bytesRead);
-    // Parser commented out for testing – currently does not return messages to the client
-    //_parser.processInput(fd, msg);
-    sendResponse(fd, "Server received: " + msg + "\n");
+
+    // std::cout << "DEBUG: Raw received from fd " << fd << ": [" << msg << "]" << std::endl;
+    size_t start = 0;
+    while (start < msg.size())
+    {
+        size_t end = msg.find('\n', start);
+        if (end == std::string::npos)
+            break;
+
+        std::string line = msg.substr(start, end - start);
+
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+
+        if (!line.empty())
+        {
+            // std::cout << "DEBUG: Sending to parser: [" << line << "]" << std::endl;
+            // parseCommand(fd, line); //-> test line 350
+            parse_exec_cmd(line, fd);
+        }
+
+        start = end + 1;
+    }
 }
 
 void	Server::removeClient(int fd)
@@ -228,8 +247,6 @@ Channel* Server::getOrCreateChannel(const std::string& name)
     return chan;
 }
 
-// Currently broadcasts messages to a channel, but since JOIN and channel management
-// are not implemented yet, this will not send messages to other clients.
 void Server::broadcastToChannel(const std::string &channelName, const std::string &message)
 {
     // Get the channel by name; create it if it doesn't exist
@@ -246,49 +263,232 @@ void Server::broadcastToChannel(const std::string &channelName, const std::strin
 
 void Server::addClientToChannel(const std::string &channelName, Client* client)
 {
-    if (!client)
-        return;
-    Channel* chan = getOrCreateChannel(channelName);
-    if (chan)
-    {
-        // TODO: Broadcast a JOIN message to other clients in this channel
-    //       Currently, other clients are not notified that a new client joined.
-    //       In a real IRC server, you'd send something like:
-    //       ":nickname!username@host JOIN #channel"
-    }
+	if (!client)
+		return;
+
+	Channel* chan = getOrCreateChannel(channelName);
+	if (!chan)
+		return;
+
+	if (!chan->hasClient(client))
+		chan->addClient(client);
+
+	std::string joinMsg = ":" + client->getNickname() + "!user@" + client->getHostname() + " JOIN " + channelName + "\r\n";
+	for (Client* c : chan->getClients())
+	{
+		if (c != client)
+			sendResponse(c->getFd(), joinMsg);
+	}
+	sendResponse(client->getFd(), joinMsg);
 }
 
 void Server::removeClientFromChannel(Client* client)
 {
-    if (!client)
-        return; // Avoid removing a null client
+	if (!client)
+		return;
 
-    for (auto it = _channels.begin(); it != _channels.end(); /* no increment here */) {
-        Channel* chan = it->second;
-        chan->removeClient(client); // Remove the client from this channel
+	for (auto it = _channels.begin(); it != _channels.end(); /* no increment */) 
+	{
+		Channel* chan = it->second;
+		if (chan->hasClient(client))
+		{
+			std::string partMsg = ":" + client->getNickname() + "!user@" + client->getHostname() + " PART " + chan->getName() + "\r\n";
+			for (Client* c : chan->getClients())
+			{
+				if (c != client)
+					sendResponse(c->getFd(), partMsg);
+			}
+			chan->removeClient(client);
 
-        if (chan->getClients().empty()) {
-            // Remove the channel if it has no clients
-            delete chan; // Free memory
-            it = _channels.erase(it); // erase returns the next iterator
-        } else {
-            // TODO: Broadcast a QUIT/PART message to other clients
-            // Example: ":nickname!username@host PART #channel"
-            ++it;
-        }
-    }
+			if (chan->getClients().empty())
+			{
+				delete chan;
+				it = _channels.erase(it);
+				continue;
+			}
+		}
+		++it;
+	}
 }
+
+
+Client* Server::getClientByFd(int fd) const
+{
+    std::map<int, Client*>::const_iterator it = _clients.find(fd);
+    if (it != _clients.end())
+        return it->second;
+    return nullptr;
+}
+
+
+Channel* Server::findChannelByName(const std::string& name) const
+{
+    std::map<std::string, Channel*>::const_iterator it = _channels.find(name);
+    if (it != _channels.end())
+        return it->second;
+    return nullptr;
+}
+
+std::vector<Channel*> Server::getChannelsForClient(Client* client) const
+{
+    std::vector<Channel*> result;
+    for (std::map<std::string, Channel*>::const_iterator it = _channels.begin(); it != _channels.end(); ++it)
+    {
+        if (it->second->hasClient(client))
+            result.push_back(it->second);
+    }
+    return result;
+}
+
+Client* Server::getClientByNick(const std::string &nick) const
+{
+    for (std::map<int, Client*>::const_iterator it = _clients.begin(); it != _clients.end(); ++it)
+    {
+        if (it->second->getNickname() == nick)
+            return it->second;
+    }
+    return nullptr;
+}
+
 
 void Server::sendResponse(int fd, const std::string &message)
 {
     send(fd, message.c_str(), message.size(), 0);
 }
-// ----------------- Command parsing placeholder -----------------
-void	Server::parseCommand(int fd, const std::string &command)
+
+std::vector<std::string> Server::split_cmd(const std::string &cmd)
 {
-	std::cout << "Received from fd " << fd << ": " << command << std::endl;
-    sendResponse(fd, "Server got your message: " + command + "\n");
+	std::vector<std::string> result;
+	std::istringstream iss(cmd);
+	std::string token;
+	while (iss >> token)
+		result.push_back(token);
+	return result;
 }
+
+void Server::parse_exec_cmd(std::string &cmd, int fd)
+{
+	if (cmd.empty())
+		return;
+
+	// Trim leading whitespace
+	size_t first = cmd.find_first_not_of(" \t\v");
+	if (first != std::string::npos)
+		cmd = cmd.substr(first);
+	// Split command to check the keyword
+	std::vector<std::string> splited_cmd = split_cmd(cmd);
+	if (splited_cmd.empty())
+		return;
+	// Handle special commands locally
+	if (splited_cmd[0] == "BONG" || splited_cmd[0] == "bong")
+		return;
+	// Handle authentication command
+	if (splited_cmd[0] == "PASS" || splited_cmd[0] == "pass")
+	{
+		// TODO: Implement password/authentication handling here
+	    // Client class should have:
+	    //   - a bool flag to track if password was provided (e.g., _passProvided)
+	    //   - methods like setPasswordProvided(true) or setAuthenticated(true)
+	    //   - store password string for later registration check
+	    // For now, just ignore or forward to InputParser later
+		return;
+	}
+	// TODO: Handle QUIT command locally before sending to InputParser
+	// TODO: Handle preliminary registration commands like NICK or USER if needed
+
+	// Forward remaining commands to InputParser
+	// Add CRLF because InputParser expects "\r\n" as delimiter
+	_parser.processInput(fd, cmd + "\r\n");
+
+	// TODO: Consider handling unknown or unregistered command responses here
+	// TODO: Implement logging/debug messages if desired
+	// TODO: If needed, handle some commands differently for unregistered users
+}
+
+//--------------TEST--------------------------------------
+// Handles and executes a single IRC command received from a client.
+// This is a simplified parser used to test server functionality only.
+// It supports core commands: NICK, USER, JOIN, PART, and PRIVMSG.
+// Does not use the full InputParser implementation.
+// Sends a default acknowledgment for unrecognized commands.
+// Once all command handlers are complete, the server will delegate parsing to InputParser instead.
+// void Server::parseCommand(int fd, const std::string &command)
+// {
+//     Client* client = getClientByFd(fd);
+//     if (!client)
+//         return;
+
+//     // Remove trailing newline/carriage return
+//     std::string cmd = command;
+//     if (!cmd.empty() && cmd.back() == '\n') cmd.pop_back();
+//     if (!cmd.empty() && cmd.back() == '\r') cmd.pop_back();
+
+//     std::cout << "Received from fd " << fd << ": " << cmd << std::endl;
+
+//     // ----- NICK command -----
+//     if (cmd.rfind("NICK ", 0) == 0)
+//     {
+//         std::string nick = cmd.substr(5);
+//         client->setNickname(nick);
+//         std::cout << "DEBUG: Nickname set to " << nick << std::endl;
+//         return;
+//     }
+
+//     // ----- USER command -----
+//     if (cmd.rfind("USER ", 0) == 0)
+//     {
+//         // For simplicity, take the last part after ':' as username
+//         size_t colonPos = cmd.find(':');
+//         std::string username;
+//         if (colonPos != std::string::npos)
+//             username = cmd.substr(colonPos + 1);
+//         else
+//             username = cmd.substr(5);
+
+//         client->setRegistered(true);
+//         std::cout << "DEBUG: Username set to " << username << std::endl;
+//         return;
+//     }
+
+//     // ----- JOIN command -----
+//     if (cmd.rfind("JOIN ", 0) == 0)
+//     {
+//         std::string channelName = cmd.substr(5);
+//         addClientToChannel(channelName, client);
+//         return;
+//     }
+
+//     // ----- PART command -----
+//     if (cmd.rfind("PART ", 0) == 0)
+//     {
+//         std::string channelName = cmd.substr(5);
+//         Channel* chan = findChannelByName(channelName);
+//         if (chan)
+//         {
+//             chan->removeClient(client);
+//             removeClientFromChannel(client);
+//         }
+//         return;
+//     }
+
+//     // ----- PRIVMSG command -----
+//     if (cmd.rfind("PRIVMSG ", 0) == 0)
+//     {
+//         size_t spacePos = cmd.find(' ', 8);
+//         if (spacePos != std::string::npos)
+//         {
+//             std::string target = cmd.substr(8, spacePos - 8);
+//             std::string message = cmd.substr(spacePos + 2);
+//             broadcastToChannel(target, ":" + client->getNickname() +
+//                 "!user@" + client->getHostname() +
+//                 " PRIVMSG " + target + " :" + message + "\r\n");
+//         }
+//         return;
+//     }
+
+//     // ----- Default response -----
+//     sendResponse(fd, "Server got your message: " + cmd + "\n");
+// }
 
 // ----------------- Getters -----------------
 int			Server::getPort() const

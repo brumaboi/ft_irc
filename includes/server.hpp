@@ -45,10 +45,17 @@ public:
     void broadcastToChannel(const std::string &channelName, const std::string &message);
     void removeChannel(const std::string &name);
 
+    Channel* findChannelByName(const std::string& name) const;
+    std::vector<Channel*> getChannelsForClient(Client* client) const;
+
     void addClientToChannel(const std::string &channelName, Client* client);
     void removeClientFromChannel(Client* client);
 
+    Client* getClientByNick(const std::string &nick) const;
     Client* getClientByFd(int fd) const; 
+
+    void parse_exec_cmd(std::string &cmd, int fd);
+    std::vector<std::string> split_cmd(const std::string &cmd);
 
     // Send messages to clients
     void sendResponse(int fd, const std::string &message);
@@ -88,10 +95,7 @@ private:
     static bool _signalReceived;             // Flag for signal received
     static void signalHandler(int signum);    // Handle SIGINT (Ctrl+C)
     void setupSignalHandler();
-
-    // Client management methods - add these
-    Client* getClientByNick(const std::string &nick) const; // Get client by nickname
-    
+  
     // Utility methods
     bool isNickInUse(const std::string &nick) const; // Check if nickname is already taken
 
