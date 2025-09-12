@@ -1,0 +1,15 @@
+# Object files
+*.o
+obj/
+
+# Executable
+ircserv
+
+# IDE files
+.vscode/
+.DS_Store
+
+# Temporary files
+*~
+*.swp
+*.swo
