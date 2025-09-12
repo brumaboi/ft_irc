@@ -1,4 +1,5 @@
 #include "InputParser.hpp"
+#include "client.hpp"
 
 InputParser::InputParser(Server& server) : server(server)
 {

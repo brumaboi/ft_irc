@@ -30,6 +30,10 @@ public:
     void setRegistered(bool registered);
     bool isPasswordAccepted() const;
     void setPasswordAccepted(bool accepted);
+    
+    // Validation utilities - static methods (belong to class, not specific object)
+    static bool isValidNickname(const std::string &nick);
+    static bool isValidUsername(const std::string &username);
 
 private:
     int _fd;                        // File descriptor for client socket

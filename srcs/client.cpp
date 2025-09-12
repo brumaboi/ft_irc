@@ -65,7 +65,8 @@ std::string Client::getHostname() const
 // ----------------- Registration Status -----------------
 bool Client::isRegistered() const
 {
-    return _registered && !_nickname.empty();
+    // IRC registration requires: password (if set), nickname, and username
+    return _registered && !_nickname.empty() && !_username.empty() && _passwordAccepted;
 }
 
 void Client::setRegistered(bool registered)
@@ -81,4 +82,51 @@ bool Client::isPasswordAccepted() const
 void Client::setPasswordAccepted(bool accepted)
 {
     _passwordAccepted = accepted;
+}
+
+// ----------------- Validation Methods -----------------
+bool Client::isValidNickname(const std::string &nick)
+{
+    // IRC nickname rules:
+    // - Length: 1-9 characters (RFC 2812)
+    // - First character: letter (A-Z, a-z)
+    // - Other characters: letters, digits, or special chars: _ - [ ] { } \ |
+    
+    if (nick.empty() || nick.length() > 9)
+        return false;
+    
+    // First character must be a letter
+    if (!std::isalpha(nick[0]))
+        return false;
+    
+    // Check remaining characters
+    for (size_t i = 1; i < nick.length(); ++i)
+    {
+        char c = nick[i];
+        if (!std::isalnum(c) && c != '_' && c != '-' && c != '[' && c != ']' && 
+            c != '{' && c != '}' && c != '\\' && c != '|')
+            return false;
+    }
+    
+    return true;
+}
+
+bool Client::isValidUsername(const std::string &username)
+{
+    // IRC username rules:
+    // - Length: 1-10 characters (common limitation)
+    // - No spaces, @, !, :, #, & (IRC special characters)
+    
+    if (username.empty() || username.length() > 10)
+        return false;
+    
+    // Check for forbidden characters
+    for (char c : username)
+    {
+        if (std::isspace(c) || c == '@' || c == '!' || c == ':' || 
+            c == '#' || c == '&')
+            return false;
+    }
+    
+    return true;
 }
