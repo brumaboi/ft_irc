@@ -25,7 +25,7 @@ class InputParser {
         void processInput(int fd, const std::string& bytes);
         void handleCommand(Client& client, const ParsedInput& parsedInput);
 
-        // void onClientDisconnect(Client& client);
+        void onClientDisconnect(int fd);
 
     private:
         Server& server;

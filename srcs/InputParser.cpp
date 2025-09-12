@@ -1,4 +1,6 @@
 #include "InputParser.hpp"
+#include "Server.hpp"
+#include "Channel.hpp"
 #include "client.hpp"
 
 InputParser::InputParser(Server& server) : server(server)
@@ -10,6 +12,11 @@ static void UpperCommand(std::string& s)
 {
     for (size_t i = 0; i < s.size(); ++i)
         s[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(s[i])));
+}
+
+void InputParser::onClientDisconnect(int fd)
+{
+    clientBuffers.erase(fd);
 }
 
 ParsedInput InputParser::parseLine(const std::string& line)
@@ -75,21 +82,29 @@ void InputParser::processInput(int fd, const std::string& bytes)
 {
     clientBuffers[fd] += bytes;
     std::string& buffer = clientBuffers[fd];
-    std::size_t pos;
 
+    std::size_t pos;
     while ((pos = buffer.find("\r\n")) != std::string::npos)
     {
         std::string line = buffer.substr(0, pos);
         buffer.erase(0, pos + 2);
+        if (line.size() + 2 > 512)
+            continue ;
+        if (line.empty())
+            continue ;
+
         ParsedInput parsedInput = parseLine(line);
         Client* client = server.getClientByFd(fd);
         if (client)
             handleCommand(*client, parsedInput);
     }
+    if (buffer.size() > 4096)
+        buffer.erase(0, buffer.size() - 4096);
 }
 
 void InputParser::handleUnknownCommand(Client& client, const ParsedInput& parsedInput)
 {
+    (void)parsedInput;
     server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Unknown command\r\n");
 }
 
@@ -121,7 +136,7 @@ void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
         return ;
     }
     std::string channelName = parsedInput.args[0];
-    if (channelName.size() < 2 && channelNamep[0] != '#' && channelName[0] != '&')
+    if (channelName.size() < 2 || (channelName[0] != '#' && channelName[0] != '&'))
     {
         server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Erroneous channel name\r\n");
         return ; 
@@ -166,7 +181,7 @@ void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
     }
     std::string channelName = parsedInput.args[0];
 
-    Channel* channel = server.findChannelByName(channelName); // !!!functions need to be implemented in Server class
+    Channel* channel = server.findChannelByName(channelName);
     if (!channel)
     {
         server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :No such channel\r\n");
@@ -211,9 +226,7 @@ void InputParser::handlePass(Client& client, const ParsedInput& parsedInput)
         server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Password incorrect\r\n");
         return ;
     }
-    //
-    // Password mismatch handling or other logic as needed
-    //
+    client.setPasswordAccepted(true);
 }
 
 void InputParser::handlePing(Client& client, const ParsedInput& parsedInput)
@@ -241,7 +254,6 @@ void InputParser::handleQuit(Client& client, const ParsedInput& parsedInput)
     if (!quitMsg.empty() && quitMsg[0] == ':')
         quitMsg = quitMsg.substr(1);
     std::string fullQuitMsg = ":" + client.getNickname() + " QUIT :" + quitMsg + "\r\n";
-    // Notify all channels the client is part of
     std::vector<Channel*> channels = server.getChannelsForClient(&client);
     for (size_t i = 0; i < channels.size(); ++i)
     {
@@ -281,14 +293,11 @@ void InputParser::handleUser(Client& client, const ParsedInput& parsedInput)
     std::string realname = parsedInput.args[3];
     if (!realname.empty() && realname[0] == ':')
         realname = realname.erase(0, 1);
-    //
-    // need functions in Client class to set username and realname    !!! 
-    // client.setUsername(username);
-    // client.setRealname(realname);
-    //
-    // complete registration of user if PASS (if required) and NICK are set
+    client.setUsername(username);
+    client.setRealname(realname);
+
     const bool passRequired = !server.getPassword().empty();
-    const bool passProvided = !passRequired || client.// function to check if PASS was provided();
+    const bool passProvided = !passRequired || client.isPasswordAccepted();
     if (passProvided && !client.getNickname().empty())
     {
         client.setRegistered(true);
@@ -305,6 +314,7 @@ void InputParser::handleUser(Client& client, const ParsedInput& parsedInput)
     {
         server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNickname() + " :Nickname required\r\n");
     }
+    
 }
 
 void InputParser::handlePrivMsg(Client& client, const ParsedInput& parsedInput)
@@ -325,7 +335,7 @@ void InputParser::handlePrivMsg(Client& client, const ParsedInput& parsedInput)
     }
     if (!target.empty() && target[0] == '#')
     {
-        Channel* channel = server.findChannelByName(target); //function to get channel by name(target);
+        Channel* channel = server.findChannelByName(target);
         if (!channel)
         {
             server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNickname() + " :No such channel\r\n");
@@ -348,7 +358,7 @@ void InputParser::handlePrivMsg(Client& client, const ParsedInput& parsedInput)
     }
     else
     {
-        Client* directClient = server.getClientByNick(target); //function to get client by nickname(target);
+        Client* directClient = server.getClientByNick(target);
         if (!directClient)
         {
             server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNickname() + " :No such nick/channel\r\n");
@@ -376,7 +386,7 @@ void InputParser::handleNick(Client& client, const ParsedInput& parsedInput)
         return ;
     }
 
-    if (Client* existingClient = server.getClientByNick(newNick)); //function to get client by nickname(newNick))
+    if (Client* existingClient = server.getClientByNick(newNick))
         if (existingClient && existingClient->getFd() != fd)
     {
         server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNickname() + " :Nickname is already in use\r\n");
@@ -392,6 +402,5 @@ void InputParser::handleNick(Client& client, const ParsedInput& parsedInput)
         nickChangeMsg = ":" + oldNick + "!" + user + "@" + hostShown + " NICK :" + newNick + "\r\n";
     else
         nickChangeMsg = ":" + hostShown + " NICK :" + newNick + "\r\n";
-    
     client.setNickname(newNick);
 }

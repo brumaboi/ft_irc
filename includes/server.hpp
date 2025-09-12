@@ -76,7 +76,6 @@ private:
     // Network state
     std::vector<pollfd> _fds;       // Poll descriptors for server + clients
     std::map<int, Client*> _clients; // Map of fd -> Client objects
-    std::map<int, std::string> clientBuffers; // Map of fd -> incomplete received data
     
     // Command processing
     CommandParser *_commandParser;   // Command parser instance

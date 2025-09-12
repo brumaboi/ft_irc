@@ -178,6 +178,8 @@ void Server::receiveData(int fd)
     {
         std::cout << "Client disconnected, fd=" << fd << std::endl;
 
+        _parser.onClientDisconnect(fd);
+
         close(fd);
         _fds.erase(std::remove_if(_fds.begin(), _fds.end(),
             [fd](const pollfd &p) { return p.fd == fd; }),
@@ -185,43 +187,21 @@ void Server::receiveData(int fd)
         _clients.erase(fd);
         return;
     }
-    std::string msg(buffer, bytesRead);
-
-    // std::cout << "DEBUG: Raw received from fd " << fd << ": [" << msg << "]" << std::endl;
-    size_t start = 0;
-    while (start < msg.size())
-    {
-        size_t end = msg.find('\n', start);
-        if (end == std::string::npos)
-            break;
-
-        std::string line = msg.substr(start, end - start);
-
-        if (!line.empty() && line.back() == '\r')
-            line.pop_back();
-
-        if (!line.empty())
-        {
-            // std::cout << "DEBUG: Sending to parser: [" << line << "]" << std::endl;
-            // parseCommand(fd, line); //-> test line 350
-            parse_exec_cmd(line, fd);
-        }
-
-        start = end + 1;
-    }
+    std::string data(buffer, bytesRead);
+    _parser.processInput(fd, data);
 }
 
 void	Server::removeClient(int fd)
 {
+    _parser.onClientDisconnect(fd);
+
 	close(fd);
     auto it = _clients.find(fd);
-
     if (it != _clients.end())
     {
         delete it->second;
         _clients.erase(it);
     }
-
 }
 
 void Server::removeChannel(const std::string &name)
@@ -350,59 +330,9 @@ Client* Server::getClientByNick(const std::string &nick) const
     return nullptr;
 }
 
-
 void Server::sendResponse(int fd, const std::string &message)
 {
     send(fd, message.c_str(), message.size(), 0);
-}
-
-std::vector<std::string> Server::split_cmd(const std::string &cmd)
-{
-	std::vector<std::string> result;
-	std::istringstream iss(cmd);
-	std::string token;
-	while (iss >> token)
-		result.push_back(token);
-	return result;
-}
-
-void Server::parse_exec_cmd(std::string &cmd, int fd)
-{
-	if (cmd.empty())
-		return;
-
-	// Trim leading whitespace
-	size_t first = cmd.find_first_not_of(" \t\v");
-	if (first != std::string::npos)
-		cmd = cmd.substr(first);
-	// Split command to check the keyword
-	std::vector<std::string> splited_cmd = split_cmd(cmd);
-	if (splited_cmd.empty())
-		return;
-	// Handle special commands locally
-	if (splited_cmd[0] == "BONG" || splited_cmd[0] == "bong")
-		return;
-	// Handle authentication command
-	if (splited_cmd[0] == "PASS" || splited_cmd[0] == "pass")
-	{
-		// TODO: Implement password/authentication handling here
-	    // Client class should have:
-	    //   - a bool flag to track if password was provided (e.g., _passProvided)
-	    //   - methods like setPasswordProvided(true) or setAuthenticated(true)
-	    //   - store password string for later registration check
-	    // For now, just ignore or forward to InputParser later
-		return;
-	}
-	// TODO: Handle QUIT command locally before sending to InputParser
-	// TODO: Handle preliminary registration commands like NICK or USER if needed
-
-	// Forward remaining commands to InputParser
-	// Add CRLF because InputParser expects "\r\n" as delimiter
-	_parser.processInput(fd, cmd + "\r\n");
-
-	// TODO: Consider handling unknown or unregistered command responses here
-	// TODO: Implement logging/debug messages if desired
-	// TODO: If needed, handle some commands differently for unregistered users
 }
 
 //--------------TEST--------------------------------------
