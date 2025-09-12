@@ -9,15 +9,16 @@ Client::Client(int fd, const std::string &hostname)
 
 Client::~Client()
 {
-    // Basic cleanup - for now just close the connection
-    // Later: notify channels, send QUIT message, etc.
 }
 
 // ----------------- Private Helper Methods -----------------
 void Client::_initializeClient()
 {
     _nickname = "";
+    _username = "";
+    _realname = "";
     _registered = false;
+    _passwordAccepted = false;
 }
 
 // ----------------- Basic Getters/Setters -----------------
@@ -36,6 +37,31 @@ void Client::setNickname(const std::string &nick)
     _nickname = nick;
 }
 
+std::string Client::getUsername() const
+{
+    return _username;
+}
+
+void Client::setUsername(const std::string &username)
+{
+    _username = username;
+}
+
+std::string Client::getRealname() const
+{
+    return _realname;
+}
+
+void Client::setRealname(const std::string &realname)
+{
+    _realname = realname;
+}
+
+std::string Client::getHostname() const
+{
+    return _hostname;
+}
+
 // ----------------- Registration Status -----------------
 bool Client::isRegistered() const
 {
@@ -45,4 +71,14 @@ bool Client::isRegistered() const
 void Client::setRegistered(bool registered)
 {
     _registered = registered;
+}
+
+bool Client::isPasswordAccepted() const
+{
+    return _passwordAccepted;
+}
+
+void Client::setPasswordAccepted(bool accepted)
+{
+    _passwordAccepted = accepted;
 }
