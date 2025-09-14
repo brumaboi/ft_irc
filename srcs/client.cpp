@@ -130,3 +130,44 @@ bool Client::isValidUsername(const std::string &username)
     
     return true;
 }
+
+// ----------------- IRC Registration Sequence -----------------
+bool Client::hasReceivedPass() const
+{
+    return _receivedPass;
+}
+
+void Client::setReceivedPass(bool received)
+{
+    _receivedPass = received;
+}
+
+bool Client::hasReceivedNick() const
+{
+    return _receivedNick;
+}
+
+void Client::setReceivedNick(bool received)
+{
+    _receivedNick = received;
+}
+
+bool Client::hasReceivedUser() const
+{
+    return _receivedUser;
+}
+
+void Client::setReceivedUser(bool received)
+{
+    _receivedUser = received;
+}
+
+bool Client::isFullyRegistered() const
+{
+    return _passwordAccepted && _receivedNick && _receivedUser && 
+           !_nickname.empty() && !_username.empty();
+}
+// Client is fully registered when:
+    // 1. Password is accepted (if server requires one)
+    // 2. NICK command was received and nickname is set
+    // 3. USER command was received and username is set

@@ -30,6 +30,15 @@ public:
     void setRegistered(bool registered);
     bool isPasswordAccepted() const;
     void setPasswordAccepted(bool accepted);
+
+    // IRC registration sequence tracking
+    bool hasReceivedPass() const;
+    void setReceivedPass(bool received);
+    bool hasReceivedNick() const;
+    void setReceivedNick(bool received);
+    bool hasReceivedUser() const;
+    void setReceivedUser(bool received);
+    bool isFullyRegistered() const;
     
     // Validation utilities - static methods (belong to class, not specific object)
     static bool isValidNickname(const std::string &nick);
@@ -43,6 +52,11 @@ private:
     std::string _realname;          // IRC real name (from user command)
     bool _registered;               // Has completed registration
     bool _passwordAccepted;         // Password verification status
+
+    // IRC registration sequence flags
+    bool _receivedPass;             // Has received PASS command
+    bool _receivedNick;             // Has received NICK command  
+    bool _receivedUser;             // Has received USER command
     
     void _initializeClient();       // Initialize default values
 };
