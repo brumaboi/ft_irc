@@ -19,6 +19,7 @@ void Channel::_initializeChannel()
 {
     _creationTime = time(NULL);
     _topic = "";
+    _topicOp = false;
 }
 
 // ----------------- Basic Channel Info -----------------
@@ -161,3 +162,12 @@ void Channel::uninviteNick(const std::string &nick)
     _invitedNicks.erase(nick);
 }
 
+bool Channel::topicOp() const
+{
+    return _topicOp;
+}
+
+void Channel::setTopicByOp(bool isOp)
+{
+    _topicOp = isOp;
+}

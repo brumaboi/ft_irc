@@ -19,6 +19,10 @@ void Client::_initializeClient()
     _realname = "";
     _registered = false;
     _passwordAccepted = false;
+
+    _receivedPass = false;
+    _receivedNick = false;
+    _receivedUser = false;
 }
 
 // ----------------- Basic Getters/Setters -----------------

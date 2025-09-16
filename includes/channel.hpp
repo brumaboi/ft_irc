@@ -46,6 +46,8 @@ public:
     bool isInvited(const std::string &nick) const; // Check if a nickname is invited
     void inviteNick(const std::string &nick); // Invite a nickname to the channel
     void uninviteNick(const std::string &nick); // Remove a nickname from the invite list
+    bool topicOp() const; // Check if topic is set by an operator
+    void setTopicByOp(bool isOp); // Set if topic is set by an operator
     
     // Basic utility
     bool isEmpty() const;
@@ -54,6 +56,7 @@ private:
     // Essential channel data
     std::string _name;              // Channel name (starts with # or &)
     std::string _topic;             // Channel topic
+    bool _topicOp;          // Is topic set by an operator
     time_t _creationTime;           // When channel was created
     std::vector<Client*> _clients;  // All channel members
     std::unordered_set<Client*> _ops; // Channel operators

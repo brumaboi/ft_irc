@@ -177,14 +177,7 @@ void Server::receiveData(int fd)
     if (bytesRead <= 0)
     {
         std::cout << "Client disconnected, fd=" << fd << std::endl;
-
-        _parser.onClientDisconnect(fd);
-
-        close(fd);
-        _fds.erase(std::remove_if(_fds.begin(), _fds.end(),
-            [fd](const pollfd &p) { return p.fd == fd; }),
-            _fds.end());
-        _clients.erase(fd);
+        removeClient(fd);
         return;
     }
     std::string data(buffer, bytesRead);
@@ -196,6 +189,11 @@ void	Server::removeClient(int fd)
     _parser.onClientDisconnect(fd);
 
 	close(fd);
+
+    _fds.erase(std::remove_if(_fds.begin(), _fds.end(),
+        [fd](const pollfd &p) { return p.fd == fd; }),
+        _fds.end());
+    
     auto it = _clients.find(fd);
     if (it != _clients.end())
     {
@@ -229,8 +227,8 @@ Channel* Server::getOrCreateChannel(const std::string& name)
 
 void Server::broadcastToChannel(const std::string &channelName, const std::string &message)
 {
-    // Get the channel by name; create it if it doesn't exist
-    Channel* chan = getOrCreateChannel(channelName);
+    // Get the channel by name;
+    Channel* chan = findChannelByName(channelName);
     if (!chan) return; // If channel couldn't be retrieved, exit
 
     // Loop through all clients in the channel
