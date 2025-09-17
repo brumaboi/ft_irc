@@ -444,3 +444,113 @@ void InputParser::handleNick(Client& client, const ParsedInput& parsedInput)
         nickChangeMsg = ":" + hostShown + " NICK :" + newNick + "\r\n";
     client.setNickname(newNick);
 }
+
+void InputParser::handleMode(Client& client, const ParsedInput& parsedInput)
+{
+    if (parsedInput.args.empty())
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Not enough parameters\r\n");
+        return ;
+    }
+
+    const std::string channel = parsedInput.args[0];
+    if (channel.empty() || (channel[0] != '#' && channel[0] != '&'))
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Erroneous channel name\r\n");
+        return ;
+    }
+
+    Channel* chan = server.findChannelByName(channel);
+    if (!chan)
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :No such channel\r\n");
+        return ;
+    }
+
+    if (parsedInput.args.size() == 1)
+    {
+        std::string m = "+";
+        if (chan->isInviteOnly())
+            m += "i";
+        if (chan->TopicOp())
+            m += "t";
+        if (chan->hasKey())
+            m += "k";
+        if (chan->getUserLimit())
+            m += "l";
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " MODE " + channel + " :" + m + "\r\n");
+        return ;
+    }
+    if (!chan->isOp(&client))
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :You're not channel operator\r\n");
+        return ;
+    }
+
+    std::string flags = parsedInput.args[1];
+    bool adding = true;
+    size_t argIndex = 2;
+    for (char f : flags)
+    {
+        if (f == '+')
+        {
+            adding = true;
+            continue ;
+        }
+        if (f == '-')
+        {
+            adding = false;
+            continue ;
+        }
+        switch (f)
+        {
+            case 'i':
+                chan->setInviteOnly(adding);
+                break ;
+            case 't':
+                chan->setTopicOp(adding);
+                break ;
+            case 'k':
+                if (adding)
+                {
+                    if (argIndex >= parsedInput.args.size())
+                    {
+                        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Key required\r\n");
+                        return ;
+                    }
+                    std::string key = parsedInput.args[argIndex++];
+                    chan->setKey(key);
+                }
+                else
+                {
+                    chan->removeKey();
+                }
+                break ;
+            case 'l':
+                if (adding)
+                {
+                    if (argIndex >= parsedInput.args.size())
+                    {
+                        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :User limit required\r\n");
+                        return ;
+                    }
+                    int limit = std::atoi(parsedInput.args[argIndex++].c_str());
+                    if (limit <= 0)
+                    {
+                        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Invalid user limit\r\n");
+                        return ;
+                    }
+                    chan->setUserLimit(limit);
+                }
+                else
+                {
+                    chan->setUserLimit(0);
+                }
+                break ;
+            default:
+                server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Unknown mode flag\r\n");
+                return ;
+        }
+    }
+    server.broadcastToChannel(chan, ":" + client.getNickname() + " MODE " + channel + " :" + flags + "\r\n");
+}

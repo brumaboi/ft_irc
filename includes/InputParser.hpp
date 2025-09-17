@@ -45,7 +45,7 @@ class InputParser {
         void handlePing(Client& client, const ParsedInput& parsedInput);
         void handlePong(Client& client, const ParsedInput& parsedInput);
         void handleQuit(Client& client, const ParsedInput& parsedInput);
-        // void handleMode(Client& client, const ParsedInput& parsedInput);
+        void handleMode(Client& client, const ParsedInput& parsedInput);
         // void handleTopic(Client& client, const ParsedInput& parsedInput);
         // void handleInvite(Client& client, const ParsedInput& parsedInput);
         // void handleKick(Client& client, const ParsedInput& parsedInput);
