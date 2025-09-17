@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <ctime>
+#include <unordered_set>
 
 class Client; // forward declaration
 
@@ -48,6 +49,8 @@ public:
     void uninviteNick(const std::string &nick); // Remove a nickname from the invite list
     bool topicOp() const; // Check if topic is set by an operator
     void setTopicByOp(bool isOp); // Set if topic is set by an operator
+
+    bool canJoin(Client* client, const std::string &key) const;
     
     // Basic utility
     bool isEmpty() const;

@@ -171,3 +171,17 @@ void Channel::setTopicByOp(bool isOp)
 {
     _topicOp = isOp;
 }
+
+// Checks if a client can join the channel (invite-only, key, user limit)
+bool Channel::canJoin(Client* client, const std::string &key) const
+{
+    if (!client)
+        return false;
+    if (isInviteOnly() && !isInvited(client->getNickname()))
+        return false;
+    if (hasKey() && key != getKey())
+        return false;
+    if (getUserLimit() > 0 && getClientCount() >= getUserLimit())
+        return false;
+    return true;
+}

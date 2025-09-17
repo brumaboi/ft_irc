@@ -1,6 +1,6 @@
 #include "InputParser.hpp"
-#include "Server.hpp"
-#include "Channel.hpp"
+#include "server.hpp"
+#include "channel.hpp"
 #include "client.hpp"
 
 InputParser::InputParser(Server& server) : server(server)
@@ -78,29 +78,69 @@ void InputParser::handleCommand(Client& client, const ParsedInput& parsedInput)
     }
 }
 
+// Fixed processInput to handle \n endings, allowing JOIN and PRIVMSG commands to be tested correctly.
 void InputParser::processInput(int fd, const std::string& bytes)
 {
+    // Append incoming bytes to the buffer for this client
     clientBuffers[fd] += bytes;
     std::string& buffer = clientBuffers[fd];
 
     std::size_t pos;
-    while ((pos = buffer.find("\r\n")) != std::string::npos)
+    while ((pos = buffer.find('\n')) != std::string::npos) // search for '\n' instead of only "\r\n"
     {
         std::string line = buffer.substr(0, pos);
-        buffer.erase(0, pos + 2);
-        if (line.size() + 2 > 512)
-            continue ;
-        if (line.empty())
-            continue ;
 
+        // Remove trailing '\r' if it exists
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+
+        // Erase processed line from buffer
+        buffer.erase(0, pos + 1);
+
+        // Skip overly long lines
+        if (line.size() > 512)
+            continue;
+
+        // Skip empty lines
+        if (line.empty())
+            continue;
+
+        // Parse the line
         ParsedInput parsedInput = parseLine(line);
+
+        // Get client object
         Client* client = server.getClientByFd(fd);
         if (client)
             handleCommand(*client, parsedInput);
     }
+
+    // Prevent buffer from growing too large
     if (buffer.size() > 4096)
         buffer.erase(0, buffer.size() - 4096);
 }
+// void InputParser::processInput(int fd, const std::string& bytes)
+// {
+//     clientBuffers[fd] += bytes;
+//     std::string& buffer = clientBuffers[fd];
+
+//     std::size_t pos;
+//     while ((pos = buffer.find("\r\n")) != std::string::npos)
+//     {
+//         std::string line = buffer.substr(0, pos);
+//         buffer.erase(0, pos + 2);
+//         if (line.size() + 2 > 512)
+//             continue ;
+//         if (line.empty())
+//             continue ;
+
+//         ParsedInput parsedInput = parseLine(line);
+//         Client* client = server.getClientByFd(fd);
+//         if (client)
+//             handleCommand(*client, parsedInput);
+//     }
+//     if (buffer.size() > 4096)
+//         buffer.erase(0, buffer.size() - 4096);
+// }
 
 void InputParser::handleUnknownCommand(Client& client, const ParsedInput& parsedInput)
 {

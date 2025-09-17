@@ -225,21 +225,7 @@ Channel* Server::getOrCreateChannel(const std::string& name)
     return chan;
 }
 
-void Server::broadcastToChannel(const std::string &channelName, const std::string &message)
-{
-    // Get the channel by name;
-    Channel* chan = findChannelByName(channelName);
-    if (!chan) return; // If channel couldn't be retrieved, exit
-
-    // Loop through all clients in the channel
-    for (Client* client : chan->getClients())
-    {
-        // Send the message to each client
-        sendResponse(client->getFd(), message);
-    }
-}
-
-void Server::addClientToChannel(const std::string &channelName, Client* client)
+void Server::addClientToChannel(const std::string &channelName, Client* client, const std::string &providedKey)
 {
 	if (!client)
 		return;
@@ -248,16 +234,56 @@ void Server::addClientToChannel(const std::string &channelName, Client* client)
 	if (!chan)
 		return;
 
+	// Check if the client is allowed to join the channel
+	if (!chan->canJoin(client, providedKey)) {
+		sendResponse(client->getFd(),
+			":" + getServerName() + " " + client->getNickname() + " :Cannot join channel\r\n");
+		return;
+	}
+
+	// Add the client if not already in the channel
 	if (!chan->hasClient(client))
 		chan->addClient(client);
 
+	// First client becomes operator
+	if (chan->getClientCount() == 1)
+		chan->addOp(client);
+
+	// Prepare JOIN message
 	std::string joinMsg = ":" + client->getNickname() + "!user@" + client->getHostname() + " JOIN " + channelName + "\r\n";
-	for (Client* c : chan->getClients())
-	{
-		if (c != client)
-			sendResponse(c->getFd(), joinMsg);
+
+	// Send JOIN message to all clients in the channel including the joining client
+	for (Client* c : chan->getClients()) {
+		sendResponse(c->getFd(), joinMsg);
 	}
-	sendResponse(client->getFd(), joinMsg);
+
+	// If channel has a topic, send it to the joining client; otherwise, send a NOTICE
+	if (!chan->getTopic().empty()) {
+		sendResponse(client->getFd(),
+			":" + getServerName() + " TOPIC " + channelName + " :" + chan->getTopic() + "\r\n");
+	} else {
+		sendResponse(client->getFd(),
+			":" + getServerName() + " NOTICE " + client->getNickname() + " :No topic is set\r\n");
+	}
+}
+
+void Server::broadcastToChannel(Client* sender, const std::string &channelName, const std::string &message)
+{
+	Channel* chan = findChannelByName(channelName);
+	if (!chan)
+		return;
+
+	// Check if sender is part of the channel
+	if (!chan->hasClient(sender)) {
+		sendResponse(sender->getFd(),
+			":" + getServerName() + " " + sender->getNickname() + " :Cannot send to channel\r\n");
+		return;
+	}
+
+	// Send message to all clients **including the sender**
+	for (Client* client : chan->getClients()) {
+		sendResponse(client->getFd(), message);
+	}
 }
 
 void Server::removeClientFromChannel(Client* client)

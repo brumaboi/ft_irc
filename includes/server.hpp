@@ -39,16 +39,16 @@ public:
     void acceptNewClient();        // Accept a new incoming client
     void receiveData(int fd);      // Receive data from a specific client
     void removeClient(int fd);     // Remove a client from server
-
+    bool notregistered(int fd); 
     // Channel handling
     Channel* getOrCreateChannel(const std::string& name);
-    void broadcastToChannel(const std::string &channelName, const std::string &message);
+   void broadcastToChannel(Client* sender, const std::string &channelName, const std::string &message);
     void removeChannel(const std::string &name);
 
     Channel* findChannelByName(const std::string& name) const;
     std::vector<Channel*> getChannelsForClient(Client* client) const;
 
-    void addClientToChannel(const std::string &channelName, Client* client);
+    void addClientToChannel(const std::string &channelName, Client* client, const std::string &providedKey);
     void removeClientFromChannel(Client* client);
 
     Client* getClientByNick(const std::string &nick) const;
