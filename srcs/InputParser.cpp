@@ -159,10 +159,10 @@ void InputParser::registerHandlers()
     commandHandlers["PING"] = &InputParser::handlePing;
     commandHandlers["PONG"] = &InputParser::handlePong;
     commandHandlers["QUIT"] = &InputParser::handleQuit;
-    // commandHandlers["TOPIC"] = &InputParser::handleTopic;
-    // commandHandlers["MODE"] = &InputParser::handleMode;
-    // commandHandlers["INVITE"] = &InputParser::handleInvite;
-    // commandHandlers["KICK"] = &InputParser::handleKick;
+    commandHandlers["TOPIC"] = &InputParser::handleTopic;
+    commandHandlers["MODE"] = &InputParser::handleMode;
+    commandHandlers["INVITE"] = &InputParser::handleInvite;
+    commandHandlers["KICK"] = &InputParser::handleKick;
 }
 
 void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
@@ -445,6 +445,90 @@ void InputParser::handleNick(Client& client, const ParsedInput& parsedInput)
     client.setNickname(newNick);
 }
 
+void InputParser::handleInvite(Client& client, const ParsedInput& parsedInput)
+{
+    if (parsedInput.args.size() < 2)
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Not enough parameters\r\n");
+        return ;
+    }
+    const std::string targetNick = parsedInput.args[0];
+    const std::string channelName = parsedInput.args[1];
+    Channel* chan = server.findChannelByName(channelName);
+    if (!chan)
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :No such channel\r\n");
+        return ;
+    }
+    if (!chan->hasClient(&client))
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :You're not on that channel\r\n");
+        return ;
+    }
+    if (chan->isInviteOnly() && !chan->isOp(&client))
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :You're not channel operator\r\n");
+        return ;
+    }
+
+    Client* targetClient = server.getClientByNick(targetNick);
+    if (!targetClient)
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :No such nick/channel\r\n");
+        return ;
+    }
+    chan->inviteNick(targetNick);
+    server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :You have invited " + targetNick + " to " + channelName + "\r\n");
+    server.sendResponse(targetClient->getFd(), ":" + client.getNickname() + " INVITE " + targetNick + " :" + channelName + "\r\n");
+}
+
+void InputParser::handleKick(Client& client, const ParsedInput& parsedInput)
+{
+    (void)client;
+    (void)parsedInput;
+    // To be implemented
+}
+
+void InputParser::handleTopic(Client& client, const ParsedInput& parsedInput)
+{
+    if (parsedInput.args.empty())
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :No channel name given\r\n");
+        return ;
+    }
+    const std::string channelName = parsedInput.args[0];
+    Channel* chan = server.findChannelByName(channelName);
+    if (!chan)
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :No such channel\r\n");
+        return ;
+    }
+    if (!chan->hasClient(&client))
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :You're not on that channel\r\n");
+        return ;
+    }
+    if (parsedInput.args.size() == 1)
+    {
+        if (chan->getTopic().empty())
+        {
+            server.sendResponse(client.getFd(), ":" + server.getServerName() + " NOTICE " + client.getNickname() + " :No topic is set\r\n");
+        }
+        else
+        {
+            server.sendResponse(client.getFd(), ":" + server.getServerName() + " TOPIC " + channelName + " :" + chan->getTopic() + "\r\n");
+        }
+        return ;
+    }
+    if (chan->topicOp() && !chan->isOp(&client))
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :You're not channel operator\r\n");
+        return ;
+    }
+    chan->setTopic(parsedInput.args[1]);
+    server.broadcastToChannel(&client, channelName, ":" + client.getNickname() + " TOPIC " + channelName + " :" + chan->getTopic() + "\r\n");
+}
+
 void InputParser::handleMode(Client& client, const ParsedInput& parsedInput)
 {
     if (parsedInput.args.empty())
@@ -470,15 +554,22 @@ void InputParser::handleMode(Client& client, const ParsedInput& parsedInput)
     if (parsedInput.args.size() == 1)
     {
         std::string m = "+";
+        std::string modes;
         if (chan->isInviteOnly())
             m += "i";
-        if (chan->TopicOp())
+        if (chan->topicOp())
             m += "t";
         if (chan->hasKey())
+        {
             m += "k";
+            modes += " " + chan->getKey();
+        }
         if (chan->getUserLimit())
+        {
             m += "l";
-        server.sendResponse(client.getFd(), ":" + server.getServerName() + " MODE " + channel + " :" + m + "\r\n");
+            modes += " " + std::to_string(chan->getUserLimit());
+        }
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " MODE " + channel + " " + m + modes + "\r\n");
         return ;
     }
     if (!chan->isOp(&client))
@@ -508,11 +599,17 @@ void InputParser::handleMode(Client& client, const ParsedInput& parsedInput)
                 chan->setInviteOnly(adding);
                 break ;
             case 't':
-                chan->setTopicOp(adding);
+                chan->setTopicByOp(adding);
                 break ;
             case 'k':
+           {
                 if (adding)
                 {
+                    if (chan->hasKey())
+                    {
+                        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Channel already has a key\r\n");
+                        return ;
+                    }
                     if (argIndex >= parsedInput.args.size())
                     {
                         server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Key required\r\n");
@@ -526,7 +623,9 @@ void InputParser::handleMode(Client& client, const ParsedInput& parsedInput)
                     chan->removeKey();
                 }
                 break ;
+            }
             case 'l':
+            {
                 if (adding)
                 {
                     if (argIndex >= parsedInput.args.size())
@@ -537,20 +636,41 @@ void InputParser::handleMode(Client& client, const ParsedInput& parsedInput)
                     int limit = std::atoi(parsedInput.args[argIndex++].c_str());
                     if (limit <= 0)
                     {
-                        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Invalid user limit\r\n");
-                        return ;
+                        chan->removeUserLimit();
+                        break ;
                     }
                     chan->setUserLimit(limit);
                 }
                 else
                 {
-                    chan->setUserLimit(0);
+                    chan->removeUserLimit();
                 }
                 break ;
+            }
+            case 'o':
+            {
+                if (argIndex >= parsedInput.args.size())
+                {
+                    server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :User nickname required\r\n");
+                    return ;
+                }
+                const std::string opNick = parsedInput.args[argIndex++];
+                Client* opClient = server.getClientByNick(opNick);
+                if (!opClient || !chan->hasClient(opClient))
+                {
+                    server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :No such nick/channel\r\n");
+                    return ;
+                }
+                if (adding)
+                    chan->addOp(opClient);
+                else
+                    chan->removeOp(opClient);
+                break ;
+            }
             default:
                 server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Unknown mode flag\r\n");
                 return ;
         }
     }
-    server.broadcastToChannel(chan, ":" + client.getNickname() + " MODE " + channel + " :" + flags + "\r\n");
+    server.broadcastToChannel(&client, channel, ":" + client.getNickname() + " MODE " + channel + " :" + flags + "\r\n");
 }
