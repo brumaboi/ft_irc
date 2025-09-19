@@ -281,8 +281,10 @@ void Server::broadcastToChannel(Client* sender, const std::string &channelName, 
 	}
 
 	// Send message to all clients **including the sender**
-	for (Client* client : chan->getClients()) {
-		sendResponse(client->getFd(), message);
+	for (Client* client : chan->getClients())
+    {
+        if (!sender || client->getFd() != sender->getFd())
+		    sendResponse(client->getFd(), message);
 	}
 }
 

@@ -484,9 +484,41 @@ void InputParser::handleInvite(Client& client, const ParsedInput& parsedInput)
 
 void InputParser::handleKick(Client& client, const ParsedInput& parsedInput)
 {
-    (void)client;
-    (void)parsedInput;
-    // To be implemented
+    if (parsedInput.args.size() < 2)
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Not enough parameters\r\n");
+        return ;
+    }
+    const std::string nickToKick = parsedInput.args[1];
+    Channel* channelName = server.findChannelByName(parsedInput.args[0]);
+    if (!channelName)
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :No such channel\r\n");
+        return ;
+    }
+    if (!channelName->isOp(&client))
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :You're not channel operator\r\n");
+        return ;
+    }
+    Client* targetClient = server.getClientByNick(nickToKick);
+    if (!targetClient || !channelName->hasClient(targetClient))
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :No such nick/channel\r\n");
+        return ;
+    }
+    const std::string reason = (parsedInput.args.size() > 2) ? parsedInput.args[2] : "No reason specified";
+    const std::string kickMsg = ":" + client.getNickname() + " KICK " + channelName->getName() + " " + nickToKick + " :" + reason + "\r\n";
+    for (Client* m : channelName->getClients())
+    {
+        if (m)
+            server.sendResponse(m->getFd(), kickMsg);
+    }
+    channelName->removeClient(targetClient);
+    if (channelName->isEmpty())
+    {
+        server.removeChannel(channelName->getName());
+    }
 }
 
 void InputParser::handleTopic(Client& client, const ParsedInput& parsedInput)
