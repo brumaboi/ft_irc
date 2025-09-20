@@ -19,6 +19,17 @@ void InputParser::onClientDisconnect(int fd)
     clientBuffers.erase(fd);
 }
 
+bool InputParser::requireRegistration(Client& client, const std::string& command)
+{
+    (void)command; // command parameter is currently unused
+    if (!client.isFullyRegistered())
+    {
+        server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :You have not registered\r\n");
+        return false;
+    }
+    return true;
+}
+
 ParsedInput InputParser::parseLine(const std::string& line)
 {
 
@@ -167,9 +178,8 @@ void InputParser::registerHandlers()
 
 void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
 {
-    //
-    // Should gatekeep to registered users only
-    //
+    if (!requireRegistration(client, "JOIN"))
+        return ;
     if (parsedInput.args.empty())
     {
         server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :No channel name given\r\n");
@@ -214,6 +224,8 @@ void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
 
 void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
 {
+    if (!requireRegistration(client, "PART"))
+        return ;
     if (parsedInput.args.empty())
     {
         server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :No channel name given\r\n");
@@ -359,8 +371,10 @@ void InputParser::handleUser(Client& client, const ParsedInput& parsedInput)
 
 void InputParser::handlePrivMsg(Client& client, const ParsedInput& parsedInput)
 {
-    const int fd = client.getFd();
+    if (!requireRegistration(client, "PRIVMSG"))
+        return ;
 
+    const int fd = client.getFd();
     if (parsedInput.args.size() < 2)
     {
         server.sendResponse(fd, ":" + server.getServerName() + " " + client.getNickname() + " :Not enough parameters\r\n");
@@ -447,6 +461,8 @@ void InputParser::handleNick(Client& client, const ParsedInput& parsedInput)
 
 void InputParser::handleInvite(Client& client, const ParsedInput& parsedInput)
 {
+    if (!requireRegistration(client, "INVITE"))
+        return ;
     if (parsedInput.args.size() < 2)
     {
         server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Not enough parameters\r\n");
@@ -484,6 +500,8 @@ void InputParser::handleInvite(Client& client, const ParsedInput& parsedInput)
 
 void InputParser::handleKick(Client& client, const ParsedInput& parsedInput)
 {
+    if (!requireRegistration(client, "KICK"))
+        return ;
     if (parsedInput.args.size() < 2)
     {
         server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Not enough parameters\r\n");
@@ -523,6 +541,8 @@ void InputParser::handleKick(Client& client, const ParsedInput& parsedInput)
 
 void InputParser::handleTopic(Client& client, const ParsedInput& parsedInput)
 {
+    if (!requireRegistration(client, "TOPIC"))
+        return ;
     if (parsedInput.args.empty())
     {
         server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :No channel name given\r\n");
@@ -563,6 +583,8 @@ void InputParser::handleTopic(Client& client, const ParsedInput& parsedInput)
 
 void InputParser::handleMode(Client& client, const ParsedInput& parsedInput)
 {
+    if (!requireRegistration(client, "MODE"))
+        return ;
     if (parsedInput.args.empty())
     {
         server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :Not enough parameters\r\n");

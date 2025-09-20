@@ -32,6 +32,7 @@ class InputParser {
         std::unordered_map<int, std::string> clientBuffers;
         typedef void (InputParser::*CommandHandler)(Client&, const ParsedInput&);
         std::unordered_map<std::string, CommandHandler> commandHandlers;
+        bool requireRegistration(Client& client, const std::string& command);
         
         // Command Handlers
         void registerHandlers();
