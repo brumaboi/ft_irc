@@ -19,7 +19,7 @@ bool Server::_signalReceived = false;
 
 // ----------------- Constructor / Destructor -----------------
 Server::Server(const int port, const std::string &password)
-    : _port(port), _password(password), _serverFd(-1), _shutdownRequested(false), _parser(*this)
+    : _port(port), _password(password), _serverFd(-1), _shutdownRequested(false), _closed(false), _parser(*this) 
 {
     _serverName = "MyServer";
     setupSignalHandler();;
@@ -35,7 +35,7 @@ void Server::signalHandler(int signum)
 {
     if (signum == SIGINT)
     {
-        std::cout << "\nSignal received, stopping server..." << std::endl;
+        Logger::info("Signal received, stopping server...");
         _signalReceived = true;
     }
 }
@@ -108,10 +108,14 @@ void Server::setupSocket()
 
 void Server::closeAll()
 {
+    if (_closed)
+        return;
+    _closed = true;
+
     for (size_t i = 0; i < _fds.size(); ++i)
         close(_fds[i].fd);
     _fds.clear();
-    std::cout << "Server shutdown. All connections closed." << std::endl;
+    Logger::info("Server shutdown. All connections closed.");
 }
 
 // ----------------- Run Loop -----------------

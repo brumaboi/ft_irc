@@ -97,6 +97,7 @@ private:
   
     // Utility methods
     bool isNickInUse(const std::string &nick) const; // Check if nickname is already taken
+    bool _closed;
 
     InputParser _parser;
 };
