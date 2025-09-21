@@ -1,6 +1,8 @@
 #include "../includes/server.hpp"
 #include "../includes/client.hpp"
 #include "../includes/channel.hpp"
+#include "../includes/irc_utils.hpp"
+#include "../includes/logger.hpp"
 
 // Add to Client.hpp/cpp in order to work
     // public:
@@ -100,7 +102,8 @@ void Server::setupSocket()
     pfd.revents = 0;
     _fds.push_back(pfd);
 
-    std::cout << "Server listening on port " << _port << std::endl;
+    // std::cout << "Server listening on port " << _port << std::endl;
+    Logger::info("Server listening on port " + std::to_string(_port));
 }
 
 void Server::closeAll()
@@ -161,8 +164,9 @@ void Server::acceptNewClient()
     Client* newClient = new Client(clientFd, hostname);
     _clients[clientFd] = newClient;
 
-    std::cout << "New client connected, fd=" << clientFd << " host=" << hostname << std::endl;
-
+    // std::cout << "New client connected, fd=" << clientFd << " host=" << hostname << std::endl;
+    Logger::log(LOG_CONNECTION, "New client connected, fd=" + std::to_string(clientFd) + " host=" + hostname);
+    sendWelcomeInstructions(*this, clientFd);
 }
 
 void Server::receiveData(int fd)
@@ -176,7 +180,8 @@ void Server::receiveData(int fd)
 
     if (bytesRead <= 0)
     {
-        std::cout << "Client disconnected, fd=" << fd << std::endl;
+        // std::cout << "Client disconnected, fd=" << fd << std::endl;
+        Logger::log(LOG_DISCONNECTION, "Client disconnected, fd=" + std::to_string(fd));
         removeClient(fd);
         return;
     }

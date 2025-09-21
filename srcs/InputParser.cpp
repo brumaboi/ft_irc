@@ -2,6 +2,7 @@
 #include "server.hpp"
 #include "channel.hpp"
 #include "client.hpp"
+#include "logger.hpp"
 
 InputParser::InputParser(Server& server) : server(server)
 {
@@ -21,8 +22,8 @@ void InputParser::onClientDisconnect(int fd)
 
 bool InputParser::requireRegistration(Client& client, const std::string& command)
 {
-    (void)command; // command parameter is currently unused
-    if (!client.isFullyRegistered())
+    (void)command; // currently unused
+    if (!client.isRegistered())
     {
         server.sendResponse(client.getFd(), ":" + server.getServerName() + " " + client.getNickname() + " :You have not registered\r\n");
         return false;
@@ -77,6 +78,8 @@ ParsedInput InputParser::parseLine(const std::string& line)
 
 void InputParser::handleCommand(Client& client, const ParsedInput& parsedInput)
 {
+    Logger::info("CMD " + parsedInput.command + " from " + client.getNickname());
+
     std::unordered_map<std::string, CommandHandler>::iterator it = commandHandlers.find(parsedInput.command);
     if (it != commandHandlers.end())
     {
@@ -85,6 +88,7 @@ void InputParser::handleCommand(Client& client, const ParsedInput& parsedInput)
     }
     else
     {
+        Logger::warning("Unknown command " + parsedInput.command + " from " + client.getNickname());
         handleUnknownCommand(client, parsedInput);
     }
 }
@@ -129,29 +133,6 @@ void InputParser::processInput(int fd, const std::string& bytes)
     if (buffer.size() > 4096)
         buffer.erase(0, buffer.size() - 4096);
 }
-// void InputParser::processInput(int fd, const std::string& bytes)
-// {
-//     clientBuffers[fd] += bytes;
-//     std::string& buffer = clientBuffers[fd];
-
-//     std::size_t pos;
-//     while ((pos = buffer.find("\r\n")) != std::string::npos)
-//     {
-//         std::string line = buffer.substr(0, pos);
-//         buffer.erase(0, pos + 2);
-//         if (line.size() + 2 > 512)
-//             continue ;
-//         if (line.empty())
-//             continue ;
-
-//         ParsedInput parsedInput = parseLine(line);
-//         Client* client = server.getClientByFd(fd);
-//         if (client)
-//             handleCommand(*client, parsedInput);
-//     }
-//     if (buffer.size() > 4096)
-//         buffer.erase(0, buffer.size() - 4096);
-// }
 
 void InputParser::handleUnknownCommand(Client& client, const ParsedInput& parsedInput)
 {
@@ -220,6 +201,8 @@ void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
     // First user to join becomes operator(+o)
     // Send appropriate messages for these conditions
     // 
+    if (channel->getClientCount() == 1)
+        channel->addOp(&client); 
 }
 
 void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
@@ -258,6 +241,14 @@ void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
     // If the parting client was an operator, assign a new operator if needed
     // Need to add the right error messages and confirmations
     //
+    if (channel->isEmpty())
+        server.removeChannel(channelName);
+    if (channel->isOp(&client))
+    {
+        std::vector<Client*> remainingClients = channel->getClients();
+        if (!remainingClients.empty())
+            channel->addOp(remainingClients[0]);
+    }
 }
 
 void InputParser::handlePass(Client& client, const ParsedInput& parsedInput)
@@ -316,14 +307,10 @@ void InputParser::handleQuit(Client& client, const ParsedInput& parsedInput)
                 server.sendResponse(clients[j]->getFd(), fullQuitMsg);
         }
         channels[i]->removeClient(&client);
-        //
-        // If channel is empty after removal, delete it from server's channel list
-        //
+        if (channels[i]->isEmpty())
+            server.removeChannel(channels[i]->getName());
     }
-    //
-    // Need to implement server function to remove client by reference or fd
-    // May also need to tweak the Quit message format and handling
-    //                          
+    server.removeClient(client.getFd());                     
 }
 
 void InputParser::handleUser(Client& client, const ParsedInput& parsedInput)
