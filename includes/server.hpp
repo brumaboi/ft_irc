@@ -60,6 +60,8 @@ public:
     // Send messages to clients
     void sendResponse(int fd, const std::string &message);
 
+    void queueSend(int fd, const std::string &msg);
+
     // Getters
     int getPort() const;           // Get server port
     std::string getPassword() const; // Get server password
@@ -76,6 +78,8 @@ private:
     // Network state
     std::vector<pollfd> _fds;       // Poll descriptors for server + clients
     std::map<int, Client*> _clients; // Map of fd -> Client objects
+
+    std::map<int, std::string> _sendBuffers;
     
     // Command processing
     CommandParser *_commandParser;   // Command parser instance

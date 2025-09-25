@@ -4,17 +4,6 @@
 #include "../includes/irc_utils.hpp"
 #include "../includes/logger.hpp"
 
-// Add to Client.hpp/cpp in order to work
-    // public:
-    // const std::string& getUsername() const { return _username; }
-    // std::string getHostname() const { return _hostname; }
-
-    // private:
-    //std::string _username;
-
-    // + _username = ""; -> void Client::_initializeClient()
-
-
 bool Server::_signalReceived = false;
 
 // ----------------- Constructor / Destructor -----------------
@@ -118,7 +107,7 @@ void Server::closeAll()
     Logger::info("Server shutdown. All connections closed.");
 }
 
-// ----------------- Run Loop -----------------
+//----------------- Run Loop -----------------
 void Server::run()
 {
     setupSocket();
@@ -140,6 +129,7 @@ void Server::run()
     }
     closeAll();
 }
+
 
 // ----------------- Client handling placeholders -----------------
 void Server::acceptNewClient()
@@ -471,8 +461,16 @@ std::string	Server::getServerName() const
 	return _serverName;
 }
 
+// Checks if the given nickname is already in use among currently connected clients.
+// Iterates through the _clients map and compares each client's nickname with the given one.
+// Returns true if the nickname is taken, false if it is available.
 bool	Server::isNickInUse(const std::string &nick) const
 {
-    (void)nick;
+    std::map<int, Client*>::const_iterator it;
+    for (it = _clients.begin(); it != _clients.end(); ++it)
+    {
+        if (it->second->getNickname() == nick)
+            return true;
+    }
 	return false;
 }
