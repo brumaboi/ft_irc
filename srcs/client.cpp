@@ -1,5 +1,4 @@
 #include "../includes/client.hpp"
-
 // ----------------- Constructor / Destructor -----------------
 Client::Client(int fd, const std::string &hostname) 
     : _fd(fd), _hostname(hostname)
@@ -171,13 +170,32 @@ bool Client::isFullyRegistered() const
     return _passwordAccepted && _receivedNick && _receivedUser && 
            !_nickname.empty() && !_username.empty();
 }
-
-// ----------------- Channel Membership -----------------
-std::vector<std::string> Client::getChannels() const
-{
-    return _channels;
-}
 // Client is fully registered when:
     // 1. Password is accepted (if server requires one)
     // 2. NICK command was received and nickname is set
     // 3. USER command was received and username is set
+
+//channel membership
+std::vector<std::string> Client::getChannels() const
+{
+    return _channels;
+}
+
+void Client::addChannel(const std::string &channelName)
+{
+    // Only add if not already in the channel
+    if (!isInChannel(channelName))
+        _channels.push_back(channelName);
+}
+
+void Client::removeChannel(const std::string &channelName)
+{
+    // Remove channel from list
+    _channels.erase(std::remove(_channels.begin(), _channels.end(), channelName), _channels.end());
+}
+
+bool Client::isInChannel(const std::string &channelName) const
+{
+    // Check if client is in the specified channel
+    return std::find(_channels.begin(), _channels.end(), channelName) != _channels.end();
+}

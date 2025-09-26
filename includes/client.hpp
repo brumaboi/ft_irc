@@ -41,6 +41,9 @@ public:
     bool isFullyRegistered() const;
     
     // Channel membership
+    void addChannel(const std::string &channelName);
+    void removeChannel(const std::string &channelName);
+    bool isInChannel(const std::string &channelName) const;
     std::vector<std::string> getChannels() const;
     
     // Validation utilities - static methods (belong to class, not specific object)
