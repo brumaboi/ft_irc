@@ -40,6 +40,9 @@ public:
     void setReceivedUser(bool received);
     bool isFullyRegistered() const;
     
+    // Channel membership
+    std::vector<std::string> getChannels() const;
+    
     // Validation utilities - static methods (belong to class, not specific object)
     static bool isValidNickname(const std::string &nick);
     static bool isValidUsername(const std::string &username);
@@ -57,6 +60,9 @@ private:
     bool _receivedPass;             // Has received PASS command
     bool _receivedNick;             // Has received NICK command  
     bool _receivedUser;             // Has received USER command
+    
+    // Channel membership
+    std::vector<std::string> _channels;  // List of joined channels
     
     void _initializeClient();       // Initialize default values
 };

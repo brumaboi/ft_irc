@@ -171,6 +171,12 @@ bool Client::isFullyRegistered() const
     return _passwordAccepted && _receivedNick && _receivedUser && 
            !_nickname.empty() && !_username.empty();
 }
+
+// ----------------- Channel Membership -----------------
+std::vector<std::string> Client::getChannels() const
+{
+    return _channels;
+}
 // Client is fully registered when:
     // 1. Password is accepted (if server requires one)
     // 2. NICK command was received and nickname is set
