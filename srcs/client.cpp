@@ -1,5 +1,5 @@
 #include "../includes/client.hpp"
-// ----------------- Constructor / Destructor -----------------
+// constructor-destructor
 Client::Client(int fd, const std::string &hostname) 
     : _fd(fd), _hostname(hostname)
 {
@@ -10,7 +10,7 @@ Client::~Client()
 {
 }
 
-// ----------------- Private Helper Methods -----------------
+//private helper method
 void Client::_initializeClient()
 {
     _nickname = "";
@@ -24,7 +24,7 @@ void Client::_initializeClient()
     _receivedUser = false;
 }
 
-// ----------------- Basic Getters/Setters -----------------
+//basic getters/setters
 int Client::getFd() const
 {
     return _fd;
@@ -65,7 +65,7 @@ std::string Client::getHostname() const
     return _hostname;
 }
 
-// ----------------- Registration Status -----------------
+//registration status
 bool Client::isRegistered() const
 {
     // IRC registration requires: password (if set), nickname, and username
@@ -87,7 +87,7 @@ void Client::setPasswordAccepted(bool accepted)
     _passwordAccepted = accepted;
 }
 
-// ----------------- Validation Methods -----------------
+//validation methods
 bool Client::isValidNickname(const std::string &nick)
 {
     // IRC nickname rules:
@@ -134,7 +134,7 @@ bool Client::isValidUsername(const std::string &username)
     return true;
 }
 
-// ----------------- IRC Registration Sequence -----------------
+//irc registration sequence
 bool Client::hasReceivedPass() const
 {
     return _receivedPass;
@@ -176,25 +176,25 @@ bool Client::isFullyRegistered() const
     // 3. USER command was received and username is set
 
 //channel membership
-std::vector<std::string> Client::getChannels() const
+std::vector<std::string> Client::getJoinedChannels() const
 {
     return _channels;
 }
 
-void Client::addChannel(const std::string &channelName)
+void Client::joinChannel(const std::string &channelName)
 {
     // Only add if not already in the channel
-    if (!isInChannel(channelName))
+    if (!isMemberOf(channelName))
         _channels.push_back(channelName);
 }
 
-void Client::removeChannel(const std::string &channelName)
+void Client::partChannel(const std::string &channelName)
 {
     // Remove channel from list
     _channels.erase(std::remove(_channels.begin(), _channels.end(), channelName), _channels.end());
 }
 
-bool Client::isInChannel(const std::string &channelName) const
+bool Client::isMemberOf(const std::string &channelName) const
 {
     // Check if client is in the specified channel
     return std::find(_channels.begin(), _channels.end(), channelName) != _channels.end();

@@ -5,6 +5,7 @@
 #include <vector>
 #include <map>
 #include <ctime>
+#include <algorithm>
 
 class Channel;
 
@@ -15,7 +16,7 @@ public:
     Client(int fd, const std::string &hostname);
     ~Client();
 
-    // Basic getters/setters - implement these first
+    // Basic getters/setters
     int getFd() const;
     std::string getNickname() const;
     void setNickname(const std::string &nick);
@@ -41,10 +42,10 @@ public:
     bool isFullyRegistered() const;
     
     // Channel membership
-    void addChannel(const std::string &channelName);
-    void removeChannel(const std::string &channelName);
-    bool isInChannel(const std::string &channelName) const;
-    std::vector<std::string> getChannels() const;
+    void joinChannel(const std::string &channelName);
+    void partChannel(const std::string &channelName);
+    bool isMemberOf(const std::string &channelName) const;
+    std::vector<std::string> getJoinedChannels() const;
     
     // Validation utilities - static methods (belong to class, not specific object)
     static bool isValidNickname(const std::string &nick);
