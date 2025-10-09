@@ -26,7 +26,8 @@ bool InputParser::requireRegistration(Client& client, const std::string& command
     (void)command; // currently unused
     if (!client.isRegistered())
     {
-        sendError(server, client.getFd(), client.getNickname(), "You are not registered");
+        sendError(server, client.getFd(), 451,
+        client.getNickname(), "You are not registered");
         Logger::warning("Unregistered client " + client.getNickname() + " attempted command " + command);
         return false;
     }
@@ -139,7 +140,7 @@ void InputParser::processInput(int fd, const std::string& bytes)
 void InputParser::handleUnknownCommand(Client& client, const ParsedInput& parsedInput)
 {
     (void)parsedInput;
-    sendError(server, client.getFd(), client.getNickname(), "Unknown command " + parsedInput.command);
+    sendError(server, client.getFd(), 421, client.getNickname(), "Unknown command " + parsedInput.command);
 }
 
 void InputParser::registerHandlers()
@@ -157,6 +158,7 @@ void InputParser::registerHandlers()
     commandHandlers["MODE"] = &InputParser::handleMode;
     commandHandlers["INVITE"] = &InputParser::handleInvite;
     commandHandlers["KICK"] = &InputParser::handleKick;
+    commandHandlers["NOTICE"] = &InputParser::handleNotice;
 }
 
 void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
@@ -165,19 +167,19 @@ void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
         return ;
     if (parsedInput.args.empty())
     {
-        sendError(server, client.getFd(), client.getNickname(), "No channel name given");
+        sendError(server, client.getFd(), 461, client.getNickname(), "No channel name given");
         return ;
     }
     std::string channelName = parsedInput.args[0];
     if (channelName.size() < 2 || (channelName[0] != '#' && channelName[0] != '&'))
     {
-        sendError(server, client.getFd(), client.getNickname(), "Erroneous channel name");
+        sendError(server, client.getFd(), 403, client.getNickname(), "Erroneous channel name");
         return ; 
     }
     Channel* channel = server.getOrCreateChannel(channelName);
     if (!channel)
     {
-        sendError(server, client.getFd(), client.getNickname(), "Failed to create or find channel");
+        sendError(server, client.getFd(), 403, client.getNickname(), "Failed to create or find channel");
         return ;
     }
     if(!channel->hasClient(&client))
@@ -213,7 +215,7 @@ void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
         return ;
     if (parsedInput.args.empty())
     {
-        sendError(server, client.getFd(), client.getNickname(), "No channel name given");
+        sendError(server, client.getFd(), 461, client.getNickname(), "No channel name given");
         return ;
     }
     std::string channelName = parsedInput.args[0];
@@ -221,12 +223,12 @@ void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
     Channel* channel = server.findChannelByName(channelName);
     if (!channel)
     {
-        sendError(server, client.getFd(), client.getNickname(), "No such channel " + channelName);
+        sendError(server, client.getFd(), 403, client.getNickname(), "No such channel " + channelName);
         return ;
     }
     if (!channel->hasClient(&client))
     {
-        sendError(server, client.getFd(), client.getNickname(), "You're not on that channel " + channelName);
+        sendError(server, client.getFd(), 442, client.getNickname(), "You're not on that channel " + channelName);
         return ;
     }
     std::string partMsg = userPrefix(client) + " PART " + channelName + "\r\n";
@@ -257,18 +259,18 @@ void InputParser::handlePass(Client& client, const ParsedInput& parsedInput)
 {
     if (parsedInput.args.empty())
     {
-        sendError(server, client.getFd(), client.getNickname(), "No password given");
+        sendError(server, client.getFd(), 461, client.getNickname(), "No password given");
         return ;
     }
     if (client.isRegistered())
     {
-        sendError(server, client.getFd(), client.getNickname(), "You are already registered");
+        sendError(server, client.getFd(), 462, client.getNickname(), "You are already registered");
         return ;
     }
     std::string password = parsedInput.args[0];
     if (password != server.getPassword())
     {
-        sendError(server, client.getFd(), client.getNickname(), "Password incorrect");
+        sendError(server, client.getFd(), 464, client.getNickname(), "Password incorrect");
         Logger::warning("Client " + client.getNickname() + " provided incorrect password");
         return ;
     }
@@ -323,13 +325,13 @@ void InputParser::handleUser(Client& client, const ParsedInput& parsedInput)
 
     if (client.isRegistered())
     {
-        sendError(server, fd, client.getNickname(), "You are already registered");
+        sendError(server, fd, 462, client.getNickname(), "You are already registered");
         return ;
     }
     //need 4 params: <user> <mode> <unused> :<realname>
     if (parsedInput.args.size() < 4)
     {
-        sendError(server, fd, client.getNickname(), "Not enough parameters");
+        sendError(server, fd, 461, client.getNickname(), "Not enough parameters");
         return ;
     }
     std::string username = parsedInput.args[0];
@@ -368,14 +370,14 @@ void InputParser::handlePrivMsg(Client& client, const ParsedInput& parsedInput)
     const int fd = client.getFd();
     if (parsedInput.args.size() < 2)
     {
-        sendError(server, fd, client.getNickname(), "Not enough parameters for PRIVMSG");
+        sendError(server, fd, 461, client.getNickname(), "Not enough parameters for PRIVMSG");
         return ;
     }
     std::string target = parsedInput.args[0];
     std::string message = parsedInput.args[1];
     if (message.empty())
     {
-        sendError(server, fd, client.getNickname(), "No text to send");
+        sendError(server, fd, 412, client.getNickname(), "No text to send");
         return ;
     }
     if (!target.empty() && target[0] == '#')
@@ -383,12 +385,12 @@ void InputParser::handlePrivMsg(Client& client, const ParsedInput& parsedInput)
         Channel* channel = server.findChannelByName(target);
         if (!channel)
         {
-            sendError(server, fd, client.getNickname(), "No such channel " + target);
+            sendError(server, fd, 403, client.getNickname(), "No such channel " + target);
             return ;
         }
         if (!channel->hasClient(&client))
         {
-            sendError(server, fd, client.getNickname(), "Can not send to channel " + target);
+            sendError(server, fd, 404, client.getNickname(), "Can not send to channel " + target);
             return ;
         }
         const std::vector<Client*> clients = channel->getClients();
@@ -406,10 +408,63 @@ void InputParser::handlePrivMsg(Client& client, const ParsedInput& parsedInput)
         Client* directClient = server.getClientByNick(target);
         if (!directClient)
         {
-            sendError(server, fd, client.getNickname(), "No such nick/channel " + target);
+            sendError(server, fd, 401, client.getNickname(), "No such nick/channel " + target);
             return ;
         }
         server.sendResponse(directClient->getFd(), userPrefix(client) + " PRIVMSG " + target + " :" + message + "\r\n");
+    }
+}
+
+void InputParser::handleNotice(Client& client, const ParsedInput& parsedInput)
+{
+    if (!requireRegistration(client, "NOTICE"))
+        return ;
+
+    const int fd = client.getFd();
+    if (parsedInput.args.size() < 2)
+    {
+        sendError(server, fd, 461, client.getNickname(), "Not enough parameters for NOTICE");
+        return ;
+    }
+    std::string target = parsedInput.args[0];
+    std::string message = parsedInput.args[1];
+    if (message.empty())
+    {
+        sendError(server, fd, 412, client.getNickname(), "No text to send");
+        return ;
+    }
+    if (!target.empty() && target[0] == '#')
+    {
+        Channel* channel = server.findChannelByName(target);
+        if (!channel)
+        {
+            sendError(server, fd, 403, client.getNickname(), "No such channel " + target);
+            return ;
+        }
+        if (!channel->hasClient(&client))
+        {
+            sendError(server, fd, 404, client.getNickname(), "Can not send to channel " + target);
+            return ;
+        }
+        const std::vector<Client*> clients = channel->getClients();
+        for (size_t i = 0; i < clients.size(); ++i)
+        {
+           Client* targetClient = clients[i];
+           if (targetClient && targetClient->getFd() != fd)
+           {
+               server.sendResponse(targetClient->getFd(), userPrefix(client) + " NOTICE " + target + " :" + message + "\r\n");
+           }
+        }
+    }
+    else
+    {
+        Client* directClient = server.getClientByNick(target);
+        if (!directClient)
+        {
+            sendError(server, fd, 401, client.getNickname(), "No such nick/channel " + target);
+            return ;
+        }
+        server.sendResponse(directClient->getFd(), userPrefix(client) + " NOTICE " + target + " :" + message + "\r\n");
     }
 }
 
@@ -420,21 +475,21 @@ void InputParser::handleNick(Client& client, const ParsedInput& parsedInput)
 
     if (parsedInput.args.empty())
     {
-        sendError(server, fd, client.getNickname(), "No nickname given");
+        sendError(server, fd, 431, client.getNickname(), "No nickname given");
         return ;
     }
     std::string newNick = parsedInput.args[0];
     static const std::regex nickRe("^[A-Za-z][A-Za-z0-9\\-_]{0,15}$"); //will need to change this logic
     if (!std::regex_match(newNick, nickRe))
     {
-        sendError(server, fd, client.getNickname(), "Erroneous nickname");
+        sendError(server, fd, 432, client.getNickname(), "Erroneous nickname");
         return ;
     }
 
     if (Client* existingClient = server.getClientByNick(newNick))
         if (existingClient && existingClient->getFd() != fd)
     {
-        sendError(server, fd, client.getNickname(), "Nickname is already in use");
+        sendError(server, fd, 433, client.getNickname(), "Nickname is already in use");
         return ;
     }
 
@@ -456,7 +511,7 @@ void InputParser::handleInvite(Client& client, const ParsedInput& parsedInput)
         return ;
     if (parsedInput.args.size() < 2)
     {
-        sendError(server, client.getFd(), client.getNickname(), "Not enough parameters");
+        sendError(server, client.getFd(), 461, client.getNickname(), "Not enough parameters");
         return ;
     }
     const std::string targetNick = parsedInput.args[0];
@@ -464,24 +519,24 @@ void InputParser::handleInvite(Client& client, const ParsedInput& parsedInput)
     Channel* chan = server.findChannelByName(channelName);
     if (!chan)
     {
-        sendError(server, client.getFd(), client.getNickname(), "No such channel");
+        sendError(server, client.getFd(), 403, client.getNickname(), "No such channel");
         return ;
     }
     if (!chan->hasClient(&client))
     {
-        sendError(server, client.getFd(), client.getNickname(), "You're not on that channel");
+        sendError(server, client.getFd(), 442, client.getNickname(), "You're not on that channel");
         return ;
     }
     if (chan->isInviteOnly() && !chan->isOp(&client))
     {
-        sendError(server, client.getFd(), client.getNickname(), "You're not channel operator");
+        sendError(server, client.getFd(), 482, client.getNickname(), "You're not channel operator");
         return ;
     }
 
     Client* targetClient = server.getClientByNick(targetNick);
     if (!targetClient)
     {
-        sendError(server, client.getFd(), client.getNickname(), "No such nick/channel");
+        sendError(server, client.getFd(), 401, client.getNickname(), "No such nick/channel");
         return ;
     }
     chan->inviteNick(targetNick);
@@ -495,25 +550,25 @@ void InputParser::handleKick(Client& client, const ParsedInput& parsedInput)
         return ;
     if (parsedInput.args.size() < 2)
     {
-        sendError(server, client.getFd(), client.getNickname(), "Not enough parameters");
+        sendError(server, client.getFd(), 461, client.getNickname(), "Not enough parameters");
         return ;
     }
     const std::string nickToKick = parsedInput.args[1];
     Channel* channelName = server.findChannelByName(parsedInput.args[0]);
     if (!channelName)
     {
-        sendError(server, client.getFd(), client.getNickname(), "No such channel");
+        sendError(server, client.getFd(), 403, client.getNickname(), "No such channel");
         return ;
     }
     if (!channelName->isOp(&client))
     {
-        sendError(server, client.getFd(), client.getNickname(), "You're not channel operator");
+        sendError(server, client.getFd(), 482, client.getNickname(), "You're not channel operator");
         return ;
     }
     Client* targetClient = server.getClientByNick(nickToKick);
     if (!targetClient || !channelName->hasClient(targetClient))
     {
-        sendError(server, client.getFd(), client.getNickname(), "No such nick/channel");
+        sendError(server, client.getFd(), 401, client.getNickname(), "No such nick/channel");
         return ;
     }
     const std::string reason = (parsedInput.args.size() > 2) ? parsedInput.args[2] : "No reason specified";
@@ -536,19 +591,19 @@ void InputParser::handleTopic(Client& client, const ParsedInput& parsedInput)
         return ;
     if (parsedInput.args.empty())
     {
-        sendError(server, client.getFd(), client.getNickname(), "No channel name given");
+        sendError(server, client.getFd(), 461, client.getNickname(), "No channel name given");
         return ;
     }
     const std::string channelName = parsedInput.args[0];
     Channel* chan = server.findChannelByName(channelName);
     if (!chan)
     {
-        sendError(server, client.getFd(), client.getNickname(), "No such channel");
+        sendError(server, client.getFd(), 403, client.getNickname(), "No such channel");
         return ;
     }
     if (!chan->hasClient(&client))
     {
-        sendError(server, client.getFd(), client.getNickname(), "You're not on that channel");
+        sendError(server, client.getFd(), 442, client.getNickname(), "You're not on that channel");
         return ;
     }
     if (parsedInput.args.size() == 1)
@@ -565,7 +620,7 @@ void InputParser::handleTopic(Client& client, const ParsedInput& parsedInput)
     }
     if (chan->topicOp() && !chan->isOp(&client))
     {
-        sendError(server, client.getFd(), client.getNickname(), "You're not channel operator");
+        sendError(server, client.getFd(), 482, client.getNickname(), "You're not channel operator");
         return ;
     }
     chan->setTopic(parsedInput.args[1]);
@@ -578,21 +633,21 @@ void InputParser::handleMode(Client& client, const ParsedInput& parsedInput)
         return ;
     if (parsedInput.args.empty())
     {
-        sendError(server, client.getFd(), client.getNickname(), "Not enough parameters");
+        sendError(server, client.getFd(), 461, client.getNickname(), "Not enough parameters");
         return ;
     }
 
     const std::string channel = parsedInput.args[0];
     if (channel.empty() || (channel[0] != '#' && channel[0] != '&'))
     {
-        sendError(server, client.getFd(), client.getNickname(), "Erroneous channel name");
+        sendError(server, client.getFd(), 403, client.getNickname(), "Erroneous channel name");
         return ;
     }
 
     Channel* chan = server.findChannelByName(channel);
     if (!chan)
     {
-        sendError(server, client.getFd(), client.getNickname(), "No such channel");
+        sendError(server, client.getFd(), 403, client.getNickname(), "No such channel");
         return ;
     }
 
@@ -619,7 +674,7 @@ void InputParser::handleMode(Client& client, const ParsedInput& parsedInput)
     }
     if (!chan->isOp(&client))
     {
-        sendError(server, client.getFd(), client.getNickname(), "You're not channel operator");
+        sendError(server, client.getFd(), 482, client.getNickname(), "You're not channel operator");
         return ;
     }
 
@@ -703,7 +758,7 @@ void InputParser::handleMode(Client& client, const ParsedInput& parsedInput)
                 Client* opClient = server.getClientByNick(opNick);
                 if (!opClient || !chan->hasClient(opClient))
                 {
-                    sendError(server, client.getFd(), client.getNickname(), "No such nick/channel");
+                    sendError(server, client.getFd(), 401, client.getNickname(), "No such nick/channel");
                     return ;
                 }
                 if (adding)
@@ -713,7 +768,7 @@ void InputParser::handleMode(Client& client, const ParsedInput& parsedInput)
                 break ;
             }
             default:
-                sendError(server, client.getFd(), client.getNickname(), "Unknown mode flag");
+                sendError(server, client.getFd(), 472, client.getNickname(), "Unknown mode flag");
                 return ;
         }
     }

@@ -50,4 +50,5 @@ class InputParser {
         void handleTopic(Client& client, const ParsedInput& parsedInput);
         void handleInvite(Client& client, const ParsedInput& parsedInput);
         void handleKick(Client& client, const ParsedInput& parsedInput);
+        void handleNotice(Client& client, const ParsedInput& parsedInput);
 };
