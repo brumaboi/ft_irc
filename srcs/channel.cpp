@@ -1,5 +1,6 @@
 #include "../includes/channel.hpp"
 #include "../includes/client.hpp"
+#include "../includes/logger.hpp"
 #include <algorithm>
 
 // ----------------- Constructor / Destructor -----------------
@@ -45,6 +46,9 @@ void Channel::addClient(Client *client)
         return;
     
     _clients.push_back(client);
+    client->joinChannel(_name);
+    Logger::info("Channel " + _name + ": Client " + client->getNickname() + " added (client now in " + 
+                 std::to_string(client->getJoinedChannels().size()) + " channels)");
 }
 
 void Channel::removeClient(Client *client)
@@ -55,7 +59,15 @@ void Channel::removeClient(Client *client)
     // Remove from client list
     std::vector<Client*>::iterator it = std::find(_clients.begin(), _clients.end(), client);
     if (it != _clients.end())
+    {
         _clients.erase(it);
+        client->partChannel(_name);
+        Logger::info("Channel " + _name + ": Client " + client->getNickname() + " removed (client now in " + 
+                     std::to_string(client->getJoinedChannels().size()) + " channels)");
+    }
+    
+    // Also remove operator status
+    removeOp(client);
 }
 
 bool Channel::hasClient(Client *client) const
@@ -93,12 +105,22 @@ bool Channel::isOp(Client *client) const
 
 void Channel::addOp(Client *client)
 {
+    if (!client)
+        return;
     _ops.insert(client);
+    client->setOperatorIn(_name, true);
+    Logger::info("Channel " + _name + ": Client " + client->getNickname() + 
+                 " promoted to operator (client is now op in " + 
+                 std::to_string(client->getJoinedChannels().size()) + " channels)");
 }
 
 void Channel::removeOp(Client *client)
 {
+    if (!client)
+        return;
     _ops.erase(client);
+    client->setOperatorIn(_name, false);
+    Logger::info("Channel " + _name + ": Client " + client->getNickname() + " operator status removed");
 }
 
 bool Channel::isInviteOnly() const

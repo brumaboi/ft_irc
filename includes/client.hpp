@@ -47,26 +47,47 @@ public:
     bool isMemberOf(const std::string &channelName) const;
     std::vector<std::string> getJoinedChannels() const;
     
+    // Operator status
+    bool isOperatorIn(const std::string &channelName) const;
+    void setOperatorIn(const std::string &channelName, bool isOp);
+    
+    // Activity tracking
+    time_t getLastActivity() const;
+    void updateActivity();
+    
+    // Away status
+    bool isAway() const;
+    std::string getAwayMessage() const;
+    void setAway(const std::string &message);
+    void setBack();
+    
     // Validation utilities - static methods (belong to class, not specific object)
     static bool isValidNickname(const std::string &nick);
     static bool isValidUsername(const std::string &username);
 
 private:
     int _fd;                        // File descriptor for client socket
-    std::string _hostname;          // Client hostname/IP
-    std::string _nickname;          // IRC nickname
-    std::string _username;          // IRC username (from user command)
-    std::string _realname;          // IRC real name (from user command)
-    bool _registered;               // Has completed registration
-    bool _passwordAccepted;         // Password verification status
+    std::string _hostname;
+    std::string _nickname;          
+    std::string _username;          
+    std::string _realname;          
+    bool _registered;          
+    bool _passwordAccepted;
 
     // IRC registration sequence flags
     bool _receivedPass;             // Has received PASS command
-    bool _receivedNick;             // Has received NICK command  
-    bool _receivedUser;             // Has received USER command
+    bool _receivedNick;
+    bool _receivedUser;
     
     // Channel membership
     std::vector<std::string> _channels;  // List of joined channels
+    std::map<std::string, bool> _operatorStatus;  // channelName -> isOperator
     
-    void _initializeClient();       // Initialize default values
+    // Activity tracking
+    time_t _lastActivity;
+    // Away status
+    bool _isAway;
+    std::string _awayMessage;
+    
+    void _initializeClient();
 };

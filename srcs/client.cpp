@@ -22,6 +22,13 @@ void Client::_initializeClient()
     _receivedPass = false;
     _receivedNick = false;
     _receivedUser = false;
+    
+    // Initialize activity tracking to current time
+    _lastActivity = std::time(NULL);
+    
+    // Initialize away status
+    _isAway = false;
+    _awayMessage = "";
 }
 
 //basic getters/setters
@@ -198,4 +205,72 @@ bool Client::isMemberOf(const std::string &channelName) const
 {
     // Check if client is in the specified channel
     return std::find(_channels.begin(), _channels.end(), channelName) != _channels.end();
+}
+
+// Operator status management
+bool Client::isOperatorIn(const std::string &channelName) const
+{
+    // Search for the channel in the operator status map
+    std::map<std::string, bool>::const_iterator it = _operatorStatus.find(channelName);
+    
+    // If found AND the value is true, client is an operator
+    if (it != _operatorStatus.end() && it->second == true)
+        return true;
+    
+    // Otherwise, not an operator (or not in channel)
+    return false;
+}
+
+void Client::setOperatorIn(const std::string &channelName, bool isOp)
+{
+    // If setting to operator (true)
+    if (isOp)
+    {
+        // Add or update the channel in the map with value = true
+        _operatorStatus[channelName] = true;
+    }
+    else
+    {
+        // If removing operator status (false)
+        // Find the channel in the map
+        std::map<std::string, bool>::iterator it = _operatorStatus.find(channelName);
+        
+        // If found, remove it from the map entirely
+        if (it != _operatorStatus.end())
+            _operatorStatus.erase(it);
+    }
+}
+
+// Activity tracking
+time_t Client::getLastActivity() const
+{
+    return _lastActivity;
+}
+
+void Client::updateActivity()
+{
+    _lastActivity = std::time(NULL);
+}
+
+// Away status management
+bool Client::isAway() const
+{
+    return _isAway;
+}
+
+std::string Client::getAwayMessage() const
+{
+    return _awayMessage;
+}
+
+void Client::setAway(const std::string &message)
+{
+    _isAway = true;
+    _awayMessage = message;
+}
+
+void Client::setBack()
+{
+    _isAway = false;
+    _awayMessage = "";
 }
