@@ -231,6 +231,10 @@ void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
         sendError(server, client.getFd(), 442, client.getNickname(), "You're not on that channel " + channelName);
         return ;
     }
+
+    bool wasOp = channel->isOp(&client);
+    std::vector<Client*> clientsInChannel = channel->getClients();
+
     std::string partMsg = userPrefix(client) + " PART " + channelName + "\r\n";
     server.sendResponse(client.getFd(), partMsg);
     std::vector<Client*> clients = channel->getClients();
@@ -246,12 +250,27 @@ void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
     // Need to add the right error messages and confirmations
     //
     if (channel->isEmpty())
+    {
         server.removeChannel(channelName);
-    if (channel->isOp(&client))
+        return ;
+    }
+    if (wasOp)
     {
         std::vector<Client*> remainingClients = channel->getClients();
         if (!remainingClients.empty())
-            channel->addOp(remainingClients[0]);
+        {
+            Client* newOp = remainingClients.front();
+            if (newOp)
+            {
+                channel->addOp(newOp);
+                std::string opMsg = ":" + server.getServerName() + " MODE " + channelName + " +o " + newOp->getNickname() + "\r\n";
+                for (size_t i = 0; i < remainingClients.size(); ++i)
+                {
+                    if (remainingClients[i])
+                        server.sendResponse(remainingClients[i]->getFd(), opMsg);
+                }
+            }
+        }
     }
 }
 
@@ -281,20 +300,15 @@ void InputParser::handlePass(Client& client, const ParsedInput& parsedInput)
 void InputParser::handlePing(Client& client, const ParsedInput& parsedInput)
 {
     const std::string token = parsedInput.args.empty() ? "" : parsedInput.args[0];
-    server.sendResponse(client.getFd(), ":" + server.getServerName() + " PONG " + server.getServerName() + " :" + token + "\r\n");
-    //
-    // May need to add some checking and logging here
-    //
+    const std::string pongToken = token.empty() ? server.getServerName() : token;
+    server.sendResponse(client.getFd(), ":" + server.getServerName() + " PONG " + server.getServerName() + " :" + pongToken + "\r\n");
+    Logger::info("Received PING from " + client.getNickname() + " token: " + token);
 }
 
 void InputParser::handlePong(Client& client, const ParsedInput& parsedInput)
 {
-    (void)parsedInput;
-    (void)client;
-    // client.//function to update last pong time or status();
-    //
-    // !!!!!
-    //  
+    const std::string token = parsedInput.args.empty() ? "" : parsedInput.args[0];
+    Logger::info("Received PONG from " + client.getNickname() + " token: " + token); 
 }
 
 void InputParser::handleQuit(Client& client, const ParsedInput& parsedInput)
@@ -354,10 +368,12 @@ void InputParser::handleUser(Client& client, const ParsedInput& parsedInput)
     else if (!passProvided)
     {
         sendWarning(server, fd, client.getNickname(), "Password required. Please provide the correct password using the PASS command.");
+        Logger::warning("Client " + client.getNickname() + " has not provided the correct password yet");
     }
     else if (client.getNickname().empty())
     {
         sendWarning(server, fd, client.getNickname(), "Please set your nickname using the NICK command.");
+        Logger::warning("Client has not set a nickname yet");
     }
     
 }
@@ -478,6 +494,14 @@ void InputParser::handleNick(Client& client, const ParsedInput& parsedInput)
         sendError(server, fd, 431, client.getNickname(), "No nickname given");
         return ;
     }
+
+    if (!server.getPassword().empty() && !client.isPasswordAccepted())
+    {
+        sendError(server, fd, 464, client.getNickname(), "Password required before setting nickname");
+        Logger::warning("Client " + client.getNickname() + " attempted to set nickname before providing password");
+        return ;
+    }
+
     std::string newNick = parsedInput.args[0];
     static const std::regex nickRe("^[A-Za-z][A-Za-z0-9\\-_]{0,15}$"); //will need to change this logic
     if (!std::regex_match(newNick, nickRe))
