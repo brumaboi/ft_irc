@@ -101,7 +101,13 @@ void InputParser::processInput(int fd, const std::string& bytes)
 {
     // Append incoming bytes to the buffer for this client
     clientBuffers[fd] += bytes;
-    std::string& buffer = clientBuffers[fd];
+    std::string buffer;
+    {
+        std::unordered_map<int, std::string>::iterator it = clientBuffers.find(fd);
+        if (it == clientBuffers.end())
+            return ;
+        buffer = it->second;
+    }
 
     std::size_t pos;
     while ((pos = buffer.find('\n')) != std::string::npos) // search for '\n' instead of only "\r\n"
@@ -128,13 +134,22 @@ void InputParser::processInput(int fd, const std::string& bytes)
 
         // Get client object
         Client* client = server.getClientByFd(fd);
-        if (client)
-            handleCommand(*client, parsedInput);
+        if (!client)
+            return ;
+        
+        handleCommand(*client, parsedInput);
+        
+        if (!server.getClientByFd(fd))
+            return ;
     }
 
     // Prevent buffer from growing too large
     if (buffer.size() > 4096)
         buffer.erase(0, buffer.size() - 4096);
+
+    std::unordered_map<int, std::string>::iterator it = clientBuffers.find(fd);
+    if (it != clientBuffers.end())
+        it->second = buffer;
 }
 
 void InputParser::handleUnknownCommand(Client& client, const ParsedInput& parsedInput)
@@ -244,11 +259,6 @@ void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
             server.sendResponse(clients[i]->getFd(), partMsg);
     }
     channel->removeClient(&client);
-    //
-    // If channel is empty after part, we can delete it from server's channel list
-    // If the parting client was an operator, assign a new operator if needed
-    // Need to add the right error messages and confirmations
-    //
     if (channel->isEmpty())
     {
         server.removeChannel(channelName);
@@ -647,7 +657,17 @@ void InputParser::handleTopic(Client& client, const ParsedInput& parsedInput)
         sendError(server, client.getFd(), 482, client.getNickname(), "You're not channel operator");
         return ;
     }
-    chan->setTopic(parsedInput.args[1]);
+
+    std::string newTopic;
+    for (size_t i = 1; i < parsedInput.args.size(); ++i)
+    {
+        if (i > 1)
+            newTopic += " ";
+        newTopic += parsedInput.args[i];
+    }
+    if (!newTopic.empty() && newTopic[0] == ':')
+        newTopic = newTopic.substr(1);
+    chan->setTopic(newTopic);
     server.broadcastToChannel(&client, channelName, ":" + client.getNickname() + " TOPIC " + channelName + " :" + chan->getTopic() + "\r\n");
 }
 
