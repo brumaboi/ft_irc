@@ -48,6 +48,8 @@ public:
     Channel* findChannelByName(const std::string& name) const;
     std::vector<Channel*> getChannelsForClient(Client* client) const;
 
+    void handleModeCommand(Client* client, const std::string &channelName, const std::string &mode, const std::string &param);
+
     void addClientToChannel(const std::string &channelName, Client* client, const std::string &providedKey);
     void removeClientFromChannel(Client* client);
 

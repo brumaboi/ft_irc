@@ -176,6 +176,54 @@ void InputParser::registerHandlers()
     commandHandlers["NOTICE"] = &InputParser::handleNotice;
 }
 
+// void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
+// {
+//     if (!requireRegistration(client, "JOIN"))
+//         return ;
+//     if (parsedInput.args.empty())
+//     {
+//         sendError(server, client.getFd(), 461, client.getNickname(), "No channel name given");
+//         return ;
+//     }
+//     std::string channelName = parsedInput.args[0];
+//     if (channelName.size() < 2 || (channelName[0] != '#' && channelName[0] != '&'))
+//     {
+//         sendError(server, client.getFd(), 403, client.getNickname(), "Erroneous channel name");
+//         return ; 
+//     }
+//     Channel* channel = server.getOrCreateChannel(channelName);
+//     if (!channel)
+//     {
+//         sendError(server, client.getFd(), 403, client.getNickname(), "Failed to create or find channel");
+//         return ;
+//     }
+//     if(!channel->hasClient(&client))
+//         channel->addClient(&client);
+//     const std::string joinMsg = userPrefix(client) + " JOIN " + channelName + "\r\n";
+//     server.sendResponse(client.getFd(), joinMsg);
+//     std::vector<Client*> clients = channel->getClients();
+//     for (size_t i = 0; i < clients.size(); ++i)
+//     {
+//         if (clients[i] && clients[i] != &client)
+//             server.sendResponse(clients[i]->getFd(), joinMsg);
+//     }
+//     if (!channel->getTopic().empty())
+//     {
+//         sendNotice(server, client.getFd(), client.getNickname(), "Topic for " + channelName + " is: " + channel->getTopic());
+//     }
+//     else
+//     {
+//         sendNotice(server, client.getFd(), client.getNickname(), "No topic is set");
+//     }
+//     //
+//     // Need to implement restrictions key(+k), invite only(+i), user limit(+l)
+//     // First user to join becomes operator(+o)
+//     // Send appropriate messages for these conditions
+//     // 
+//     if (channel->getClientCount() == 1)
+//         channel->addOp(&client); 
+// }
+
 void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
 {
     if (!requireRegistration(client, "JOIN"))
@@ -185,28 +233,48 @@ void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
         sendError(server, client.getFd(), 461, client.getNickname(), "No channel name given");
         return ;
     }
+
     std::string channelName = parsedInput.args[0];
+    std::string providedKey = (parsedInput.args.size() > 1) ? parsedInput.args[1] : "";
+
     if (channelName.size() < 2 || (channelName[0] != '#' && channelName[0] != '&'))
     {
         sendError(server, client.getFd(), 403, client.getNickname(), "Erroneous channel name");
         return ; 
     }
+
     Channel* channel = server.getOrCreateChannel(channelName);
     if (!channel)
     {
         sendError(server, client.getFd(), 403, client.getNickname(), "Failed to create or find channel");
         return ;
     }
+
+    //  +i, +k, +l
+    if (!channel->canJoin(&client, providedKey))
+    {
+        if (channel->isInviteOnly() && !channel->isInvited(client.getNickname()))
+            sendError(server, client.getFd(), 473, client.getNickname(), "Cannot join channel (+i)");
+        else if (channel->hasKey() && providedKey != channel->getKey())
+            sendError(server, client.getFd(), 475, client.getNickname(), "Cannot join channel (+k) - wrong key");
+        else if (channel->getUserLimit() > 0 && channel->getClientCount() >= channel->getUserLimit())
+            sendError(server, client.getFd(), 471, client.getNickname(), "Cannot join channel (+l) - channel full");
+        return;
+    }
+
     if(!channel->hasClient(&client))
         channel->addClient(&client);
+
     const std::string joinMsg = userPrefix(client) + " JOIN " + channelName + "\r\n";
     server.sendResponse(client.getFd(), joinMsg);
+
     std::vector<Client*> clients = channel->getClients();
     for (size_t i = 0; i < clients.size(); ++i)
     {
         if (clients[i] && clients[i] != &client)
             server.sendResponse(clients[i]->getFd(), joinMsg);
     }
+
     if (!channel->getTopic().empty())
     {
         sendNotice(server, client.getFd(), client.getNickname(), "Topic for " + channelName + " is: " + channel->getTopic());
@@ -215,14 +283,13 @@ void InputParser::handleJoin(Client& client, const ParsedInput& parsedInput)
     {
         sendNotice(server, client.getFd(), client.getNickname(), "No topic is set");
     }
-    //
-    // Need to implement restrictions key(+k), invite only(+i), user limit(+l)
-    // First user to join becomes operator(+o)
-    // Send appropriate messages for these conditions
-    // 
+
     if (channel->getClientCount() == 1)
         channel->addOp(&client); 
 }
+
+
+
 
 void InputParser::handlePart(Client& client, const ParsedInput& parsedInput)
 {

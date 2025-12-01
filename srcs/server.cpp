@@ -226,45 +226,117 @@ Channel* Server::getOrCreateChannel(const std::string& name)
 
 void Server::addClientToChannel(const std::string &channelName, Client* client, const std::string &providedKey)
 {
-	if (!client)
-		return;
+    if (!client)
+        return;
 
-	Channel* chan = getOrCreateChannel(channelName);
-	if (!chan)
-		return;
+    Channel* chan = findChannelByName(channelName);
 
-	// Check if the client is allowed to join the channel
-	if (!chan->canJoin(client, providedKey)) {
-		sendResponse(client->getFd(),
-			":" + getServerName() + " " + client->getNickname() + " :Cannot join channel\r\n");
-		return;
-	}
+    // Kanal ne postoji – tek tada kreiramo kanal
+    if (!chan) {
+        chan = new Channel(channelName);
+        _channels[channelName] = chan;
 
-	// Add the client if not already in the channel
-	if (!chan->hasClient(client))
-		chan->addClient(client);
+        // Prvi klijent koji kreira kanal automatski postaje operator
+        chan->addOp(client);
+    }
 
-	// First client becomes operator
-	if (chan->getClientCount() == 1)
-		chan->addOp(client);
+    // Provjeri može li klijent ući u kanal (invite-only, key, user limit)
+    if (!chan->canJoin(client, providedKey)) {
+        sendResponse(client->getFd(),
+            ":" + getServerName() + " " + client->getNickname() + " :Cannot join channel\r\n");
+        return;
+    }
 
-	// Prepare JOIN message
-	std::string joinMsg = ":" + client->getNickname() + "!user@" + client->getHostname() + " JOIN " + channelName + "\r\n";
+    // Dodaj klijenta samo ako već nije u kanalu
+    if (!chan->hasClient(client))
+        chan->addClient(client);
 
-	// Send JOIN message to all clients in the channel including the joining client
-	for (Client* c : chan->getClients()) {
-		sendResponse(c->getFd(), joinMsg);
-	}
+    // Pošalji JOIN poruku svim klijentima u kanalu
+    std::string joinMsg = ":" + client->getNickname() + "!user@" + client->getHostname() + " JOIN " + channelName + "\r\n";
+    for (Client* c : chan->getClients()) {
+        sendResponse(c->getFd(), joinMsg);
+    }
 
-	// If channel has a topic, send it to the joining client; otherwise, send a NOTICE
-	if (!chan->getTopic().empty()) {
-		sendResponse(client->getFd(),
-			":" + getServerName() + " TOPIC " + channelName + " :" + chan->getTopic() + "\r\n");
-	} else {
-		sendResponse(client->getFd(),
-			":" + getServerName() + " NOTICE " + client->getNickname() + " :No topic is set\r\n");
-	}
+    // Pošalji topic ili NOTICE
+    if (!chan->getTopic().empty()) {
+        sendResponse(client->getFd(),
+            ":" + getServerName() + " TOPIC " + channelName + " :" + chan->getTopic() + "\r\n");
+    } else {
+        sendResponse(client->getFd(),
+            ":" + getServerName() + " NOTICE " + client->getNickname() + " :No topic is set\r\n");
+    }
 }
+
+
+void Server::handleModeCommand(Client* client, const std::string &channelName, const std::string &mode, const std::string &param)
+{
+    Channel* chan = findChannelByName(channelName);
+    if (!chan) {
+        sendResponse(client->getFd(), ":" + getServerName() + " 403 " + client->getNickname() + " " + channelName + " :No such channel\r\n");
+        return;
+    }
+
+    if (!chan->isOp(client)) {
+        sendResponse(client->getFd(), ":" + getServerName() + " 482 " + client->getNickname() + " " + channelName + " :You're not channel operator\r\n");
+        return;
+    }
+
+    size_t paramIndex = 0;
+    std::vector<std::string> params;
+    if (!param.empty()) {
+        // Split param string into list ako ima više riječi
+        std::istringstream ss(param);
+        std::string p;
+        while (ss >> p)
+            params.push_back(p);
+    }
+
+    for (size_t i = 0; i < mode.size(); ++i)
+    {
+        char m = mode[i];
+        std::string curParam = (paramIndex < params.size()) ? params[paramIndex] : "";
+
+        switch(m)
+        {
+            case 'i': // invite only
+                chan->setInviteOnly(true);
+                break;
+            case 'k': // key (password)
+                if (!curParam.empty()) {
+                    chan->setKey(curParam);
+                    paramIndex++;
+                }
+                break;
+            case 'l': // user limit
+                if (!curParam.empty()) {
+                    chan->setUserLimit(std::atoi(curParam.c_str()));
+                    paramIndex++;
+                }
+                break;
+            case 'o': // give/take operator
+                if (!curParam.empty()) {
+                    Client* target = getClientByNick(curParam);
+                    if (target) chan->addOp(target);
+                    paramIndex++;
+                }
+                break;
+            case 't': // topic by op only
+                chan->setTopicByOp(true);
+                break;
+            default:
+                break;
+        }
+    }
+
+    std::string modeMsg = ":" + client->getNickname() + " MODE " + channelName + " +" + mode;
+    if (!param.empty())
+        modeMsg += " " + param;
+    modeMsg += "\r\n";
+
+    for (Client* c : chan->getClients())
+        sendResponse(c->getFd(), modeMsg);
+}
+
 
 void Server::broadcastToChannel(Client* sender, const std::string &channelName, const std::string &message)
 {
@@ -356,94 +428,10 @@ Client* Server::getClientByNick(const std::string &nick) const
 }
 
 void Server::sendResponse(int fd, const std::string &message)
-{
+{ 
     send(fd, message.c_str(), message.size(), 0);
 }
 
-//--------------TEST--------------------------------------
-// Handles and executes a single IRC command received from a client.
-// This is a simplified parser used to test server functionality only.
-// It supports core commands: NICK, USER, JOIN, PART, and PRIVMSG.
-// Does not use the full InputParser implementation.
-// Sends a default acknowledgment for unrecognized commands.
-// Once all command handlers are complete, the server will delegate parsing to InputParser instead.
-// void Server::parseCommand(int fd, const std::string &command)
-// {
-//     Client* client = getClientByFd(fd);
-//     if (!client)
-//         return;
-
-//     // Remove trailing newline/carriage return
-//     std::string cmd = command;
-//     if (!cmd.empty() && cmd.back() == '\n') cmd.pop_back();
-//     if (!cmd.empty() && cmd.back() == '\r') cmd.pop_back();
-
-//     std::cout << "Received from fd " << fd << ": " << cmd << std::endl;
-
-//     // ----- NICK command -----
-//     if (cmd.rfind("NICK ", 0) == 0)
-//     {
-//         std::string nick = cmd.substr(5);
-//         client->setNickname(nick);
-//         std::cout << "DEBUG: Nickname set to " << nick << std::endl;
-//         return;
-//     }
-
-//     // ----- USER command -----
-//     if (cmd.rfind("USER ", 0) == 0)
-//     {
-//         // For simplicity, take the last part after ':' as username
-//         size_t colonPos = cmd.find(':');
-//         std::string username;
-//         if (colonPos != std::string::npos)
-//             username = cmd.substr(colonPos + 1);
-//         else
-//             username = cmd.substr(5);
-
-//         client->setRegistered(true);
-//         std::cout << "DEBUG: Username set to " << username << std::endl;
-//         return;
-//     }
-
-//     // ----- JOIN command -----
-//     if (cmd.rfind("JOIN ", 0) == 0)
-//     {
-//         std::string channelName = cmd.substr(5);
-//         addClientToChannel(channelName, client);
-//         return;
-//     }
-
-//     // ----- PART command -----
-//     if (cmd.rfind("PART ", 0) == 0)
-//     {
-//         std::string channelName = cmd.substr(5);
-//         Channel* chan = findChannelByName(channelName);
-//         if (chan)
-//         {
-//             chan->removeClient(client);
-//             removeClientFromChannel(client);
-//         }
-//         return;
-//     }
-
-//     // ----- PRIVMSG command -----
-//     if (cmd.rfind("PRIVMSG ", 0) == 0)
-//     {
-//         size_t spacePos = cmd.find(' ', 8);
-//         if (spacePos != std::string::npos)
-//         {
-//             std::string target = cmd.substr(8, spacePos - 8);
-//             std::string message = cmd.substr(spacePos + 2);
-//             broadcastToChannel(target, ":" + client->getNickname() +
-//                 "!user@" + client->getHostname() +
-//                 " PRIVMSG " + target + " :" + message + "\r\n");
-//         }
-//         return;
-//     }
-
-//     // ----- Default response -----
-//     sendResponse(fd, "Server got your message: " + cmd + "\n");
-// }
 
 // ----------------- Getters -----------------
 int			Server::getPort() const
