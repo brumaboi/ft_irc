@@ -29,6 +29,7 @@ void Server::signalHandler(int signum)
     }
 }
 
+//for server to know what to do when he recive SIGNIT
 void Server::setupSignalHandler()
 {
     struct sigaction sa;
@@ -58,7 +59,7 @@ void Server::setupSocket()
 
     std::memset(&_address, 0, sizeof(_address));
     _address.sin_family = AF_INET;
-    _address.sin_addr.s_addr = INADDR_ANY;
+    _address.sin_addr.s_addr = INADDR_ANY; //server will accept any IP adr.(all IP adresses)
 
     int attempts = 100;
     int port = _port;
@@ -91,7 +92,6 @@ void Server::setupSocket()
     pfd.revents = 0;
     _fds.push_back(pfd);
 
-    // std::cout << "Server listening on port " << _port << std::endl;
     Logger::info("Server listening on port " + std::to_string(_port));
 }
 
@@ -118,6 +118,7 @@ void Server::run()
 
         for (size_t i = 0; i < _fds.size(); i++)
         {
+            //cheking if we have something for reading
             if (_fds[i].revents & POLLIN)
             {
                 if (_fds[i].fd == _serverFd)
@@ -134,7 +135,7 @@ void Server::run()
 // ----------------- Client handling placeholders -----------------
 void Server::acceptNewClient()
 {
-    sockaddr_in cliAddr;
+    sockaddr_in cliAddr; //(ip,port,cilent)
     socklen_t len = sizeof(cliAddr);
     int clientFd = accept(_serverFd, (sockaddr *)&cliAddr, &len);
     if (clientFd < 0)
@@ -148,20 +149,22 @@ void Server::acceptNewClient()
         close(clientFd);
         return;
     }
+
+    //add new cilent into the poll for tracking
     pollfd pfd;
     pfd.fd = clientFd;
-    pfd.events = POLLIN;
+    pfd.events = POLLIN; //traks events
     pfd.revents = 0;
     _fds.push_back(pfd);
 
-    std::string hostname = inet_ntoa(cliAddr.sin_addr);
+    std::string hostname = inet_ntoa(cliAddr.sin_addr); //coverts IP in to readable format
     Client* newClient = new Client(clientFd, hostname);
     _clients[clientFd] = newClient;
 
-    // std::cout << "New client connected, fd=" << clientFd << " host=" << hostname << std::endl;
     Logger::log(LOG_CONNECTION, "New client connected, fd=" + std::to_string(clientFd) + " host=" + hostname);
     sendWelcomeInstructions(*this, clientFd);
 }
+
 
 void Server::receiveData(int fd)
 {
@@ -174,7 +177,6 @@ void Server::receiveData(int fd)
 
     if (bytesRead <= 0)
     {
-        // std::cout << "Client disconnected, fd=" << fd << std::endl;
         Logger::log(LOG_DISCONNECTION, "Client disconnected, fd=" + std::to_string(fd));
         removeClient(fd);
         return;
@@ -231,33 +233,33 @@ void Server::addClientToChannel(const std::string &channelName, Client* client, 
 
     Channel* chan = findChannelByName(channelName);
 
-    // Kanal ne postoji – tek tada kreiramo kanal
-    if (!chan) {
+    // no client -> crating channal
+    if (!chan)
+    {
         chan = new Channel(channelName);
         _channels[channelName] = chan;
 
-        // Prvi klijent koji kreira kanal automatski postaje operator
+        // first cilent becomes operator
         chan->addOp(client);
     }
 
-    // Provjeri može li klijent ući u kanal (invite-only, key, user limit)
-    if (!chan->canJoin(client, providedKey)) {
+    // (invite-only, key, user limit)
+    if (!chan->canJoin(client, providedKey))
+    {
         sendResponse(client->getFd(),
             ":" + getServerName() + " " + client->getNickname() + " :Cannot join channel\r\n");
         return;
     }
 
-    // Dodaj klijenta samo ako već nije u kanalu
     if (!chan->hasClient(client))
         chan->addClient(client);
 
-    // Pošalji JOIN poruku svim klijentima u kanalu
     std::string joinMsg = ":" + client->getNickname() + "!user@" + client->getHostname() + " JOIN " + channelName + "\r\n";
     for (Client* c : chan->getClients()) {
         sendResponse(c->getFd(), joinMsg);
     }
 
-    // Pošalji topic ili NOTICE
+    // sending topic or NOTICE
     if (!chan->getTopic().empty()) {
         sendResponse(client->getFd(),
             ":" + getServerName() + " TOPIC " + channelName + " :" + chan->getTopic() + "\r\n");
@@ -271,21 +273,24 @@ void Server::addClientToChannel(const std::string &channelName, Client* client, 
 void Server::handleModeCommand(Client* client, const std::string &channelName, const std::string &mode, const std::string &param)
 {
     Channel* chan = findChannelByName(channelName);
-    if (!chan) {
+    if (!chan)
+    {
         sendResponse(client->getFd(), ":" + getServerName() + " 403 " + client->getNickname() + " " + channelName + " :No such channel\r\n");
         return;
     }
 
-    if (!chan->isOp(client)) {
+    if (!chan->isOp(client)) 
+    {
         sendResponse(client->getFd(), ":" + getServerName() + " 482 " + client->getNickname() + " " + channelName + " :You're not channel operator\r\n");
         return;
     }
 
+    // MODE #chat +k pass-> separating parameters
     size_t paramIndex = 0;
     std::vector<std::string> params;
-    if (!param.empty()) {
-        // Split param string into list ako ima više riječi
-        std::istringstream ss(param);
+    if (!param.empty())
+    {
+        std::istringstream ss(param); //-> breaking string
         std::string p;
         while (ss >> p)
             params.push_back(p);
@@ -351,7 +356,7 @@ void Server::broadcastToChannel(Client* sender, const std::string &channelName, 
 		return;
 	}
 
-	// Send message to all clients **including the sender**
+	// Send message to all clients
 	for (Client* client : chan->getClients())
     {
         if (!sender || client->getFd() != sender->getFd())
@@ -364,7 +369,7 @@ void Server::removeClientFromChannel(Client* client)
 	if (!client)
 		return;
 
-	for (auto it = _channels.begin(); it != _channels.end(); /* no increment */) 
+	for (auto it = _channels.begin(); it != _channels.end();) 
 	{
 		Channel* chan = it->second;
 		if (chan->hasClient(client))
@@ -377,14 +382,14 @@ void Server::removeClientFromChannel(Client* client)
 			}
 			chan->removeClient(client);
 
-			if (chan->getClients().empty())
+			if (chan->getClients().empty()) //->deleting empty channel
 			{
 				delete chan;
 				it = _channels.erase(it);
 				continue;
 			}
 		}
-		++it;
+		++it; //->next channel
 	}
 }
 
@@ -406,6 +411,7 @@ Channel* Server::findChannelByName(const std::string& name) const
     return nullptr;
 }
 
+//return all chan. with specific cilent
 std::vector<Channel*> Server::getChannelsForClient(Client* client) const
 {
     std::vector<Channel*> result;
@@ -450,7 +456,6 @@ std::string	Server::getServerName() const
 }
 
 // Checks if the given nickname is already in use among currently connected clients.
-// Iterates through the _clients map and compares each client's nickname with the given one.
 // Returns true if the nickname is taken, false if it is available.
 bool	Server::isNickInUse(const std::string &nick) const
 {
